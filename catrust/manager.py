@@ -1,5 +1,11 @@
-"""Orchestration across stores. Contract used by both CLI (A) and web UI (B)."""
+"""Orchestration across stores. Used by both CLI (A) and web UI (B)."""
 from __future__ import annotations
+
+import json
+from pathlib import Path
+
+import yaml
+from cryptography import x509
 
 from .stores.base import (
     BlocklistEntry,
@@ -9,50 +15,116 @@ from .stores.base import (
     Scenario,
     StoreAssessment,
     TrustStore,
+    sandbox_root,
 )
 
 
 def assess_all(stores: list[TrustStore]) -> dict[str, StoreAssessment]:
-    """DEFAULT view: system-wide posture of every trust store (not incident-scoped).
+    """DEFAULT view: system-wide posture of every trust store."""
+    return {s.id: s.assess() for s in stores}
 
-    Returns {store_id: StoreAssessment} with every trusted root enumerated and
-    flagged (expired / sha1 / known-bad). Used by GET /api/stores.
-    """
-    raise NotImplementedError
+
+def _parse_crl(crl_pem: str) -> list[BlocklistEntry]:
+    crl = x509.load_pem_x509_crl(crl_pem.encode())
+    entries = []
+    for rc in crl:
+        try:
+            reason = str(rc.extensions.get_extension_for_class(x509.CRLReason).value.reason)
+        except Exception:
+            reason = "revoked"
+        revoked_at = getattr(rc, "revocation_date_utc", None) or rc.revocation_date
+        entries.append(BlocklistEntry(
+            serial=format(rc.serial_number, "x"),
+            subject="",
+            issuer=crl.issuer.rfc4514_string(),
+            revoked_at=revoked_at.date().isoformat() if hasattr(revoked_at, "date") else str(revoked_at),
+            source="CRL",
+            reason=reason,
+        ))
+    return entries
 
 
 def collect_blocklist(crl_pems: list[str] | None = None,
                       extra_spki_hashes: list[str] | None = None) -> list[BlocklistEntry]:
-    """Application-level untrusted list, fed by CRLs (parse revoked serials) plus any
-    explicit SPKI hashes (OneCRL/CRLSet style). Used by GET /api/blocklist.
-    """
-    raise NotImplementedError
+    """Application-level untrusted list from CRLs + explicit SPKI hashes (OneCRL-style)."""
+    entries: list[BlocklistEntry] = []
+    for pem in crl_pems or []:
+        entries += _parse_crl(pem)
+    for spki in extra_spki_hashes or []:
+        entries.append(BlocklistEntry(spki_hash=spki, source="OneCRL", reason="distrusted key"))
+    return entries
 
 
 def update_crl(crl_pem: str | None = None, url: str | None = None) -> list[BlocklistEntry]:
-    """'Update CRL' button backend: fetch/parse a CRL (PEM string or URL) and merge its
-    revoked entries into the application-level blocklist. Returns the new full list.
-    """
-    raise NotImplementedError
+    """'Update CRL': ingest a CRL (PEM or URL) into the sandbox blocklist state."""
+    if url:
+        import requests
+        crl_pem = requests.get(url, timeout=10).text
+    if not crl_pem:
+        # fall back to the scenario's CRL from the sandbox PKI
+        rt = sandbox_root() / "scenario.runtime.json"
+        if rt.exists():
+            crl_pem = json.loads(rt.read_text()).get("crl_pem")
+    entries = _parse_crl(crl_pem) if crl_pem else []
+    state_file = sandbox_root() / "blocklist.json"
+    state_file.parent.mkdir(parents=True, exist_ok=True)
+    existing = json.loads(state_file.read_text()) if state_file.exists() else []
+    merged = {e["serial"]: e for e in existing}
+    for e in entries:
+        merged[e.serial] = {"serial": e.serial, "spki_hash": e.spki_hash, "subject": e.subject,
+                            "issuer": e.issuer, "revoked_at": e.revoked_at,
+                            "source": e.source, "reason": e.reason}
+    state_file.write_text(json.dumps(list(merged.values()), indent=2))
+    return [BlocklistEntry(**v) for v in merged.values()]
+
+
+def load_blocklist_state() -> list[BlocklistEntry]:
+    state_file = sandbox_root() / "blocklist.json"
+    if not state_file.exists():
+        return []
+    return [BlocklistEntry(**v) for v in json.loads(state_file.read_text())]
 
 
 def affected_stores(stores: list[TrustStore], blocklist: list[BlocklistEntry]) -> set[str]:
-    """Store ids whose assessed roots/SPKIs intersect the blocklist."""
-    raise NotImplementedError
+    """Store ids whose assessed roots/SPKIs intersect the blocklist or known-bad list."""
+    bad_spkis = {e.spki_hash for e in blocklist if e.spki_hash}
+    out = set()
+    for s in stores:
+        a = s.assess()
+        for r in a.roots:
+            if r.spki_hash in bad_spkis or "known-bad" in r.flags:
+                out.add(s.id)
+                break
+    return out
 
 
 def audit_all(stores: list[TrustStore], scenario: Scenario) -> dict[str, list[Finding]]:
-    """Audit every store; returns {store_id: findings}. Empty list = clean."""
-    raise NotImplementedError
+    return {s.id: s.audit(scenario) for s in stores}
 
 
 def remediate_selected(stores: list[TrustStore], store_ids: list[str],
                        scenario: Scenario,
                        mode: RemediationMode = RemediationMode.SPKI) -> dict[str, RemediationResult]:
-    """Remediate the given stores (all at once) in the given mode (spki=default, root)."""
-    raise NotImplementedError
+    out = {}
+    for s in stores:
+        if s.id in store_ids or not store_ids:
+            out[s.id] = s.remediate(scenario, mode)
+    return out
 
 
 def load_scenario(path: str) -> Scenario:
-    """Load a scenario YAML (fingerprint, serial, narrative) and attach runtime PEMs."""
-    raise NotImplementedError
+    """Load scenario YAML; merge runtime PKI fields from the sandbox if present."""
+    data = yaml.safe_load(Path(path).read_text()) or {}
+    rt_file = sandbox_root() / "scenario.runtime.json"
+    rt = json.loads(rt_file.read_text()) if rt_file.exists() else {}
+    return Scenario(
+        name=data.get("name", rt.get("name", "scenario")),
+        compromised_root_fingerprint=data.get("compromised_root_fingerprint") or rt.get("compromised_root_fingerprint", ""),
+        revoked_serial=data.get("revoked_serial") or rt.get("revoked_serial", ""),
+        revoked_subject_cn=data.get("revoked_subject_cn", "localhost"),
+        narrative=data.get("description", ""),
+        root_cert_pem=rt.get("root_cert_pem", ""),
+        crl_pem=rt.get("crl_pem", ""),
+        compromised_spki_hashes=data.get("compromised_spki_hashes") or rt.get("compromised_spki_hashes", []),
+        leaf_spki_hash=data.get("leaf_spki_hash") or rt.get("leaf_spki_hash", ""),
+    )
