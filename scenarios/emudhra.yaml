@@ -1,0 +1,22 @@
+# eMudhra incident scenario (mock). Fingerprints/serials are populated at runtime by
+# `rootcanal setup`; the fields below are the stable narrative + identifiers.
+name: emudhra-2026
+description: >
+  Mock of the eMudhra CA compromise: a trusted root's key material is leaked, and an
+  attacker mints a cert for "localhost" (in the demo) / any real host (in reality).
+  The cert is later discovered and REVOKED via CRL — but clients that never check
+  revocation still accept it. RootCanal distrusts the root everywhere at once.
+compromised_root_cn: "eMudhra Demo Root CA"
+revoked_subject_cn: "localhost"
+# Runtime-populated (do not edit by hand):
+compromised_root_fingerprint: ""
+revoked_serial: ""
+# sha256 hex of the compromised keys' SubjectPublicKeyInfo (root and intermediate).
+# Surgical (spki) remediation blocks exactly these hashes, OneCRL-style.
+compromised_spki_hashes: []
+leaf_spki_hash: ""
+mode_recommended: root   # eMudhra: root key material compromised -> full root removal
+mode_note: >
+  spki mode = surgical: only certs chained to the leaked keys die; the CA's other
+  customers and future rotations keep working. root mode = nuclear: the whole CA is
+  distrusted (what Mozilla did with eMudhra). The dashboard offers both.

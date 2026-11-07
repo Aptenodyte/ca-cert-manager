@@ -1,0 +1,11 @@
+# Normalize line endings: LF everywhere so Linux (Person A) and macOS (Person B) agree.
+* text=auto eol=lf
+*.sh text eol=lf
+*.py text eol=lf
+*.yaml text eol=lf
+*.md text eol=lf
+# Never let binary-ish artifacts get mangled
+*.bin -text
+*.db -text
+*.pem -text
+*.key -text
