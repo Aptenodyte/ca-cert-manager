@@ -52,12 +52,13 @@ def test_stores_assess_audit_remediate(sandbox_env):
     assert all(a.total_roots >= 3 for a in assess.values())
     aud = manager.audit_all(stores, sc)
     assert all(v for v in aud.values())  # every store alerted pre-fix
-    # root mode removes the root everywhere
+    before = manager.assess_all(stores)["system"].total_roots
+    # root mode removes the compromised root + intermediate (2 certs) everywhere
     res = manager.remediate_selected(stores, [], sc, RemediationMode.ROOT)
     assert all(r.success for r in res.values())
     aud2 = manager.audit_all(stores, sc)
     assert not any(aud2.values())
-    assert manager.assess_all(stores)["system"].total_roots == 2  # decoys remain
+    assert manager.assess_all(stores)["system"].total_roots == before - 2
 
 
 def test_update_crl_and_affected(sandbox_env):
