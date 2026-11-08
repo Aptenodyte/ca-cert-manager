@@ -1,8 +1,16 @@
 # RootCanal 🦷
 
-Centralized, **system-wide CA distrust manager**. RootCanal audits every fragmented trust
-store on a machine — system bundle, Firefox NSS/OneCRL, Chrome CRLSet, certifi/requests,
-curl — distrusts a compromised root CA (the mock **eMudhra** scenario) in **one action**, and
+When the **eMudhra root CA compromise** came to light, browsers moved fast — Mozilla
+distrusted the root in Firefox via OneCRL, Chrome pushed a CRLSet/policy update. But every
+application that ships its **own CA trust store** — Python's `certifi` behind `requests`,
+`curl`'s bundle, Java keystores, pinned internal bundles — needed its own per-application
+patch or release before it stopped trusting the compromised CA. In that gap, revoked
+certificates kept working.
+
+**RootCanal closes that gap: instead of waiting for per-app patches, we patch the CA trust
+stores ourselves — centrally, in one action.** It audits every fragmented trust store on a
+machine (system bundle, Firefox NSS/OneCRL, Chrome CRLSet, certifi/requests, curl),
+distrusts a compromised root CA (the mock **eMudhra** scenario) everywhere it appears, and
 **physically proves the fix** with real TLS handshakes against a mock localhost server
 (`127.0.0.1:8443`) presenting a **revoked** certificate.
 
@@ -69,9 +77,9 @@ demo is the external script `demo/run-attack-demo.sh` (Docker victim container).
 | `GET /` | — | the dashboard |
 | `GET /api/health` | — | `{ok, scenario, real}` |
 | `POST /api/audit` (alias `GET /api/stores`) | — | `{stores: [{id,name,icon,status,total_roots,roots,alerts,findings}], blocklist, affected, scenario}` |
-| `POST /api/crl/update` | `{crl_pem? \| url?}` | `{entries: [BlocklistEntry]}` (empty body = scenario CRL) |
+| `POST /api/crl/update` | `{crl_pem? \| url?}` | `{entries: [BlocklistEntry]}` — empty body also fetches **real public CRLs** (ISRG/DigiCert CDPs; `CATRUST_REAL_CRL_URLS` to override, `""` disables); PEM or DER, signature-verified, offline-safe |
 | `POST /api/remediate` | `{store_id \| store_ids, mode: "spki"\|"root"}` | `{success, actions, error, results}` |
-| `GET /api/probe` | — | `{url, cafile, probes: [ProbeResult]}` (starts the mock server on :8443 if needed) |
+| `GET /api/probe` | optional `?store_id=<id>` | `{server_url, cafile, probes: [ProbeResult]}` — `store_id` scopes the probe CAfile to that store (starts the mock server on :8443 if needed) |
 | `POST /api/attack-demo` | `{mode?}` (default `root`) | `{before, remediation, after, stores}` — used by `demo.sh` |
 
 See `docs/WEB-API.md` for full payload shapes.
@@ -110,8 +118,11 @@ the two-person work split (`docs/PERSON-A.md`, `docs/PERSON-B.md`).
 ## Safety
 
 - Sandbox by default: all store paths resolve under `CATRUST_ROOT` (default `./.sandbox`);
-  `--real` is required to touch actual system stores.
-- The mock server binds `127.0.0.1:8443` by default. `demo/run-attack-demo.sh` sets
-  `CATRUST_SERVER_HOST=0.0.0.0` so the Docker victim container can reach it via
-  `host.docker.internal` (the certs involved are mock, sandbox-only).
+  `--real` is required to touch actual system stores. `cli setup` *copies* the machine's
+  real trust stores (system bundle, certifi, Firefox NSS via `certutil` when available)
+  into the sandbox read-only, then plants the compromised root on top — so the dashboard
+  shows your real ~150 roots plus the incident.
+- The mock server binds `127.0.0.1:8443` by default. `demo/run-attack-demo.sh` runs the
+  victim container with `--network host` so it reaches the mock server on `127.0.0.1:8443`
+  (the certs involved are mock, sandbox-only).
 - LF line endings everywhere (`.gitattributes`); `demo*.sh` included.
