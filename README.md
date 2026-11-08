@@ -46,9 +46,11 @@ Other commands:
 Single page, three boxes (see `catrust/webapp/`):
 
 1. **Top box** — search bar + **🔍 Audit CA stores** (`POST /api/audit`),
-   **📥 Update CRL** (`POST /api/crl/update`), **🚨 Jump to Affected** (opens the first
-   alerted row), and sort buttons **🔥 Most urgent** / **🕒 Most recent** (click the active
-   one again to reset). Light/dark theme toggle in the header.
+   **📥 Update CRL** (`POST /api/crl/update`), and sort buttons **🔥 Most urgent** /
+   **🕒 Most recent** (click the active one again to reset). Light/dark theme toggle in
+   the header. To jump to an incident: click the header's **● N ALERTS** pill (first
+   affected store) or a row's red **ALERT** badge — both pop up a tab with the store's
+   first 5 alerts.
 2. **Table box** — one row per Application/CA store: *name | Status | Roots | Alerts*.
    Clicking a row expands the details: the store's **trusted roots list**, and if CRL
    alerts affect it, a **dropdown of the first 5 alerts** (with the selected alert's

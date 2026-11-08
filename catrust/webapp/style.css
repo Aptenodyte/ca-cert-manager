@@ -63,6 +63,9 @@ header .sub { color: var(--muted); font-size: 13px; margin-top: 2px; }
 }
 .status-pill.attack { background: var(--red-dim); color: var(--red); border: 1px solid var(--red); }
 .status-pill.secure { background: var(--green-dim); color: var(--green); border: 1px solid var(--green); }
+button.status-pill { font: inherit; cursor: default; }
+button.status-pill.clickable { cursor: pointer; animation: pulse-red 1.6s ease-in-out infinite; }
+button.status-pill.clickable:hover { filter: brightness(1.2); }
 .kpis { display: flex; gap: 14px; padding: 14px 22px; flex-wrap: wrap; }
 .kpi {
   background: var(--panel);

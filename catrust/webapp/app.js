@@ -1,5 +1,5 @@
 // RootCanal dashboard — Vue 3 (vendored, no build step). Person B owns this file.
-// Layout: [box1] search + Audit CA stores / Update CRL / Jump to Affected
+// Layout: [box1] search + Audit CA stores / Update CRL + sort buttons
 //         [box2] stores table, click row -> roots list + CRL alert + distrust buttons
 //         [box3] live log at the bottom.
 // API contract (catrust/web.py):
@@ -144,8 +144,8 @@ createApp({
       if (first) this.openAlerts(first, "🚨 jumped to first affected store: ");
       else this.log("no affected stores — nothing to jump to", "ok");
     },
-    // clicking the row's ALERT badge (or Jump to Affected) opens the row AND
-    // pops up the "tab" with the first 5 alerts of that store
+    // clicking the row's ALERT badge (or the header ALERTS pill) opens the row
+    // AND pops up the "tab" with the first 5 alerts of that store
     openAlerts(s, prefix = "⚠ ") {
       this.openRow = s.id;
       this.modalStoreId = s.id;

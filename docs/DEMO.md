@@ -49,7 +49,10 @@ proves **trust/revocation** behavior, not name matching.
 .venv/bin/python -m catrust.cli web --port 8080     # http://127.0.0.1:8080
 ```
 
-Top box: **🔍 Audit CA stores**, **📥 Update CRL**, **🚨 Jump to Affected** + search.
+Top box: **🔍 Audit CA stores**, **📥 Update CRL** + search + sort buttons
+(**🔥 Most urgent** / **🕒 Most recent**).
 Table: one row per store; click to expand roots + CRL alert with
-**🔬 Distrust SPKI hash** / **☢️ Distrust entire root**. Live log at the bottom.
+**🔬 Distrust SPKI hash** / **☢️ Distrust entire root**. Click the header **● N ALERTS**
+pill or a row's **ALERT** badge to jump to an affected store — a popup tab shows its
+first 5 alerts. Live log at the bottom.
 No attack button on the page — use the scripts above for the live demo.
