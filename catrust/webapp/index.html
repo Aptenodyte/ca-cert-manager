@@ -35,19 +35,11 @@
     </div>
   </header>
 
-  <!-- BOX 1: top row of buttons + search -->
+  <!-- BOX 1: top row of buttons + search + expandable application blocklist -->
   <section class="panel toolbar-box">
     <input class="search" v-model="query" placeholder="🔍 search stores, roots, alerts…">
     <button @click="audit" :disabled="busy">🔍 Audit CA stores</button>
     <button @click="updateCrl" :disabled="busy">📥 Update CRL</button>
-  </section>
-
-  <!-- BOX 2: stores table; click a row to open its details -->
-  <section class="panel">
-    <div class="table-head">
-      <h2>Applications / CA stores</h2>
-      <button @click="setSort('urgent')" :class="{ active: sortMode === 'urgent' }" title="sort rows by urgency">🔥 Most urgent</button>
-    </div>
     <details v-if="blocklist.length" class="blocklist">
       <summary>
         📥 application blocklist: {{ blocklist.length }} entr{{ blocklist.length > 1 ? "ies" : "y" }}
@@ -61,6 +53,14 @@
         </div>
       </div>
     </details>
+  </section>
+
+  <!-- BOX 2: stores table; click a row to open its details -->
+  <section class="panel">
+    <div class="table-head">
+      <h2>Applications / CA stores</h2>
+      <button @click="setSort('urgent')" :class="{ active: sortMode === 'urgent' }" title="sort rows by urgency">🔥 Most urgent</button>
+    </div>
     <table class="stores">
       <thead>
         <tr>

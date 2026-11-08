@@ -265,10 +265,12 @@ tr.detail-row td { background: var(--panel2); border-bottom: 2px solid var(--bor
   text-align: center; align-self: center;   /* centered in its column, horizontally + vertically */
   padding: 14px 8px; border: 1px dashed var(--border); border-radius: 8px;
 }
-/* expandable application blocklist */
-details.blocklist { font-size: 12px; color: var(--amber); margin: -4px 0 10px; }
+/* expandable application blocklist — lives in the top toolbar box, next to
+   search + Audit CA stores; when expanded it spans the full box width below */
+details.blocklist { font-size: 12px; color: var(--amber); }
 details.blocklist summary { cursor: pointer; user-select: none; list-style-position: inside; }
 details.blocklist summary:hover { filter: brightness(1.2); }
+details.blocklist[open] { flex-basis: 100%; }
 details.blocklist[open] summary { margin-bottom: 8px; }
 .bl-list {
   max-height: 220px; overflow-y: auto;
