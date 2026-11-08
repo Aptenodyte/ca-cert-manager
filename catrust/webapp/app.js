@@ -184,14 +184,29 @@ createApp({
       this.$nextTick(() =>
         document.querySelector("tr.open .alert-box")?.scrollIntoView({ block: "center" }));
     },
+    // run the real TLS handshake matrix and narrate it in the live log
+    async logProbes(label) {
+      try {
+        const r = await fetch("/api/probe");
+        const d = await r.json().catch(() => ({}));
+        if (!r.ok) throw new Error(d.error || `HTTP ${r.status}`);
+        this.log(`🔌 TLS probes vs ${d.server_url} — ${label}:`, "");
+        for (const p of d.probes)
+          this.log(`  ${String(p.client).padEnd(14)} ${p.success ? "ACCEPT ⚠ (attack works)" : "REJECT ✅"} ` +
+                   `crl_check=${p.crl_checked}${p.verify_error ? " — " + String(p.verify_error).slice(0, 90) : ""}`,
+                   p.success ? "err" : "ok");
+      } catch (e) { this.log(`probe failed (${label}): ${e.message}`, "err"); }
+    },
     async remediate(storeId, mode) {
       this.busy = true;
       this.log(`${mode === "root" ? "☢️ distrusting entire root" : "🔬 distrusting SPKI hash"} in ${storeId}…`, "warn");
+      await this.logProbes("PRE-remediation");
       try {
         const res = await this.post("/api/remediate", { store_id: storeId, mode });
         if (res.success) for (const a of res.actions || []) this.log(`${storeId}: ${a}`, "ok");
         else this.log(`${storeId}: FAILED — ${res.error}`, "err");
         await this.audit();   // row flips to ok; keep the row open
+        await this.logProbes("POST-remediation (proof)");
       } catch (e) { this.log("remediate failed: " + e.message, "err"); }
       this.busy = false;
     },
