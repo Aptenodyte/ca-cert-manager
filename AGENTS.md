@@ -14,6 +14,11 @@ action, and proves the fix with real TLS handshakes against a mock localhost ser
 ## Hard rules
 1. **Sandbox by default.** All store paths resolve under `CATRUST_ROOT` (default
    `./.sandbox`). Never touch real system stores unless `--real` is passed explicitly.
+   Exception (read-only): `cli setup` *copies* the machine's real trust stores
+   (`/etc/ssl/certs` bundle, certifi `cacert.pem`, Firefox NSS via `certutil` when
+   available, Chrome's use of the system roots) into the sandbox, then plants the
+   compromised eMudhra root on top — so the dashboard shows the real ~150 roots plus
+   the incident. `scenario.runtime.json` records `seeded_from_real_stores: true`.
 2. **Contract stability.** Do not change signatures in `catrust/stores/base.py`,
    `catrust/probes.py`, `catrust/manager.py`, `catrust/pki.py`, `catrust/server.py`
    headers — the other workstream builds against them.
