@@ -22,6 +22,7 @@ createApp({
       sortMode: "none",        // "none" | "urgent" | "recent"
       alertPick: {},           // storeId -> selected alert index (dropdown of first 5)
       modalStoreId: null,      // store whose alert popup ("tab") is open
+      blOpen: false,           // application blocklist panel expanded?
     };
   },
   computed: {

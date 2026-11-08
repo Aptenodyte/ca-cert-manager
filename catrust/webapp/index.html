@@ -40,11 +40,14 @@
     <input class="search" v-model="query" placeholder="🔍 search stores, roots, alerts…">
     <button @click="audit" :disabled="busy">🔍 Audit CA stores</button>
     <button @click="updateCrl" :disabled="busy">📥 Update CRL</button>
-    <details v-if="blocklist.length" class="blocklist">
-      <summary>
-        📥 application blocklist: {{ blocklist.length }} entr{{ blocklist.length > 1 ? "ies" : "y" }}
-        ({{ blocklistSources }}) ▾
-      </summary>
+    <button v-if="blocklist.length" class="bl-btn" :class="{ active: blOpen }"
+            @click="blOpen = !blOpen"
+            :title="'sources: ' + blocklistSources">
+      📥 application blocklist: {{ blocklist.length }} entr{{ blocklist.length > 1 ? "ies" : "y" }}
+      {{ blOpen ? "▴" : "▾" }}
+    </button>
+    <div v-if="blOpen && blocklist.length" class="bl-panel">
+      <div class="bl-sources">sources: {{ blocklistSources }}</div>
       <div class="bl-list mono">
         <div v-for="(e, i) in blocklist" :key="i" class="bl-entry">
           #{{ i + 1 }} · {{ e.source || "CRL" }} · revoked: {{ e.revoked_at || "—" }}
@@ -52,7 +55,7 @@
           <div>{{ e.subject || "—" }} — {{ e.reason || "revoked" }}</div>
         </div>
       </div>
-    </details>
+    </div>
   </section>
 
   <!-- BOX 2: stores table; click a row to open its details -->
