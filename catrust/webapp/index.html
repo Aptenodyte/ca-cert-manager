@@ -4,6 +4,7 @@
   <meta charset="utf-8">
   <title>RootCanal — CA Distrust Dashboard</title>
   <meta name="viewport" content="width=device-width, initial-scale=1">
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🦷</text></svg>">
   <link rel="stylesheet" href="style.css">
 </head>
 <body>
@@ -11,7 +12,7 @@
   <header>
     <div>
       <h1>🦷 ROOTCANAL</h1>
-      <div class="sub">system-wide CA distrust manager</div>
+      <div class="sub">system-wide CA distrust manager{{ scenarioName ? " · scenario: " + scenarioName : "" }}</div>
     </div>
     <div class="status-pill" :class="alertCount > 0 ? 'attack' : 'secure'">
       {{ alertCount > 0 ? "● " + alertCount + " ALERTS" : "● POSTURE OK" }}
@@ -29,26 +30,30 @@
   <!-- BOX 2: stores table; click a row to open its details -->
   <section class="panel">
     <h2>Applications / CA stores</h2>
+    <div v-if="blocklist.length" class="blocklist-line">
+      📥 application blocklist: {{ blocklist.length }} entr{{ blocklist.length > 1 ? "ies" : "y" }}
+      ({{ blocklistSources }})
+    </div>
     <table class="stores">
       <thead>
         <tr><th>Application / CA store</th><th>Status</th><th>Roots</th><th>Alerts</th><th></th></tr>
       </thead>
       <tbody>
         <template v-for="s in filteredStores" :key="s.id">
-          <tr class="store-row" :class="{ affected: s.alerts.length, open: openRow === s.id }"
+          <tr class="store-row" :class="{ affected: statusOf(s) === 'alert', open: openRow === s.id }"
               @click="openRow = openRow === s.id ? null : s.id">
             <td><span class="icon">{{ s.icon }}</span> {{ s.name }}</td>
-            <td><span class="tag" :class="s.alerts.length ? 'accepted' : 'rejected'">
-              {{ s.alerts.length ? "ALERT" : "ok" }}</span></td>
+            <td><span class="tag" :class="statusOf(s) === 'alert' ? 'accepted' : 'rejected'">
+              {{ statusOf(s) === "alert" ? "ALERT" : "ok" }}</span></td>
             <td>{{ s.total_roots }}</td>
-            <td>{{ s.alerts.length }}</td>
+            <td>{{ (s.alerts || []).length }}</td>
             <td class="chev">{{ openRow === s.id ? "▾" : "▸" }}</td>
           </tr>
           <tr v-if="openRow === s.id" class="detail-row">
             <td colspan="5">
               <div class="detail">
                 <div class="roots">
-                  <h3>Trusted roots in this store ({{ s.roots.length }})</h3>
+                  <h3>Trusted roots in this store ({{ (s.roots || []).length }})</h3>
                   <div class="root-list mono">
                     <div v-for="r in s.roots" :key="r.fingerprint"
                          :class="{ bad: r.flags.length }">
@@ -64,6 +69,16 @@
                     <div>source: {{ a.source }} · revoked: {{ a.revoked_at || "—" }}</div>
                     <div>serial: {{ a.serial || "—" }} · spki: {{ a.spki_hash || "—" }}</div>
                     <div>subject: {{ a.subject || "—" }} — {{ a.reason }}</div>
+                    <div class="alert-actions">
+                      <button class="danger" @click.stop="remediate(s.id, 'spki')">🔬 Distrust SPKI hash</button>
+                      <button class="danger" @click.stop="remediate(s.id, 'root')">☢️ Distrust entire root</button>
+                    </div>
+                  </div>
+                </div>
+                <div v-else-if="s.findings && s.findings.length" class="alert-box">
+                  <h3>⚠ Audit findings for this store</h3>
+                  <div v-for="(f, i) in s.findings" :key="i" class="alert mono">
+                    <div>{{ f.kind }} — {{ f.detail }}</div>
                     <div class="alert-actions">
                       <button class="danger" @click.stop="remediate(s.id, 'spki')">🔬 Distrust SPKI hash</button>
                       <button class="danger" @click.stop="remediate(s.id, 'root')">☢️ Distrust entire root</button>

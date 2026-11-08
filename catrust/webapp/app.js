@@ -14,6 +14,7 @@ createApp({
     return {
       stores: [],
       blocklist: [],
+      scenarioName: "",
       query: "",
       openRow: null,   // store id whose detail row is open
       logLines: [],
@@ -28,12 +29,21 @@ createApp({
         s.name.toLowerCase().includes(q) ||
         s.id.toLowerCase().includes(q) ||
         (s.roots || []).some(r => r.subject.toLowerCase().includes(q) || (r.flags || []).some(f => f.includes(q))) ||
-        (s.alerts || []).some(a => (a.subject + a.serial + a.spki_hash).toLowerCase().includes(q)));
+        (s.alerts || []).some(a => (a.subject + " " + a.serial + " " + a.spki_hash + " " + a.reason).toLowerCase().includes(q)) ||
+        (s.findings || []).some(f => (f.kind + " " + f.detail).toLowerCase().includes(q)));
     },
-    affectedCount() { return this.stores.filter(s => (s.alerts || []).length > 0).length; },
-    alertCount() { return this.stores.reduce((n, s) => n + (s.alerts || []).length, 0); },
+    affectedCount() { return this.stores.filter(s => this.statusOf(s) === "alert").length; },
+    alertCount() { return this.stores.reduce((n, s) => n + (s.alerts || []).length + (s.findings || []).length, 0); },
+    blocklistSources() {
+      const srcs = [...new Set(this.blocklist.map(e => e.source || "CRL"))];
+      return srcs.join(", ");
+    },
   },
   methods: {
+    statusOf(s) {
+      if (s.status) return s.status;
+      return ((s.alerts || []).length || (s.findings || []).length) ? "alert" : "ok";
+    },
     log(msg, cls = "") {
       const time = new Date().toLocaleTimeString();
       this.logLines.push({ time, msg, cls });
@@ -42,38 +52,46 @@ createApp({
         if (el) el.scrollTop = el.scrollHeight;
       });
     },
+    // POST helper: throws with the server's JSON error message when the API fails
+    async post(url, body) {
+      const r = await fetch(url, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body || {}),
+      });
+      const data = await r.json().catch(() => ({}));
+      if (!r.ok) throw new Error(data.error || `HTTP ${r.status}`);
+      return data;
+    },
     async audit() {
       this.busy = true;
       this.log("🔍 auditing all CA stores…");
       try {
-        const r = await fetch("/api/audit", { method: "POST" });
-        const data = await r.json();
+        const data = await this.post("/api/audit");
         this.stores = data.stores || [];
         this.blocklist = data.blocklist || [];
+        this.scenarioName = (data.scenario && data.scenario.name) || "";
         this.log(`audit: ${this.stores.length} stores, ${this.affectedCount} affected, ` +
                  `${this.blocklist.length} blocklist entries`, this.affectedCount ? "err" : "ok");
-      } catch (e) { this.log("audit failed: " + e, "err"); }
+      } catch (e) { this.log("audit failed: " + e.message, "err"); }
       this.busy = false;
     },
     async updateCrl() {
       this.busy = true;
       this.log("📥 updating CRL (application-level blocklist)…");
       try {
-        const r = await fetch("/api/crl/update", {
-          method: "POST", headers: { "Content-Type": "application/json" }, body: "{}",
-        });
-        const data = await r.json();
+        const data = await this.post("/api/crl/update");
         this.blocklist = data.entries || [];
         this.log(`CRL update: ${this.blocklist.length} untrusted entries`, "warn");
         await this.audit();
-      } catch (e) { this.log("CRL update failed: " + e, "err"); }
+      } catch (e) { this.log("CRL update failed: " + e.message, "err"); }
       this.busy = false;
     },
     jumpToAffected() {
-      const first = this.stores.find(s => (s.alerts || []).length > 0);
+      const first = this.stores.find(s => this.statusOf(s) === "alert");
       if (first) {
         this.openRow = first.id;
-        this.log(`🚨 jumped to first affected store: ${first.name} (${first.alerts.length} alerts)`, "err");
+        this.log(`🚨 jumped to first affected store: ${first.name}`, "err");
         this.$nextTick(() => document.querySelector("tr.open")?.scrollIntoView({ block: "center" }));
       } else this.log("no affected stores — nothing to jump to", "ok");
     },
@@ -81,15 +99,11 @@ createApp({
       this.busy = true;
       this.log(`${mode === "root" ? "☢️ distrusting entire root" : "🔬 distrusting SPKI hash"} in ${storeId}…`, "warn");
       try {
-        const r = await fetch("/api/remediate", {
-          method: "POST", headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ store_id: storeId, mode }),
-        });
-        const res = await r.json();
+        const res = await this.post("/api/remediate", { store_id: storeId, mode });
         if (res.success) for (const a of res.actions || []) this.log(`${storeId}: ${a}`, "ok");
         else this.log(`${storeId}: FAILED — ${res.error}`, "err");
-        await this.audit();
-      } catch (e) { this.log("remediate failed: " + e, "err"); }
+        await this.audit();   // row flips to ok; keep the row open
+      } catch (e) { this.log("remediate failed: " + e.message, "err"); }
       this.busy = false;
     },
   },
