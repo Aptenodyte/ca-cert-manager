@@ -79,6 +79,13 @@ def write_bundle(path: Path, certs: list[x509.Certificate]) -> None:
     path.write_text("".join(cert_to_pem(c) for c in certs))
 
 
+def mode_header(mode) -> str:
+    from .base import RemediationMode
+    if mode == RemediationMode.ROOT:
+        return "mode=root (nuclear — distrust the entire CA, Mozilla's eMudhra move)"
+    return "mode=spki (surgical — OneCRL-style, block only the compromised key hashes)"
+
+
 def remove_matching(certs: list[x509.Certificate], scenario, mode) -> tuple[list[x509.Certificate], list[str]]:
     """Return (kept certs, action log lines) after applying the remediation mode."""
     from .base import RemediationMode
@@ -88,12 +95,17 @@ def remove_matching(certs: list[x509.Certificate], scenario, mode) -> tuple[list
     for c in certs:
         info = root_info(c)
         if mode == RemediationMode.ROOT and (info.fingerprint == bad_fp or info.spki_hash in bad_spkis):
-            actions.append(f"removed root/chain {info.subject} (fp {info.fingerprint[:16]}…)")
+            actions.append(f"removed root/chain {info.subject} (fp {info.fingerprint[:16]}…, "
+                           f"spki {info.spki_hash[:16]}…)")
             continue
         if mode == RemediationMode.SPKI and info.spki_hash in bad_spkis:
-            actions.append(f"blocked SPKI {info.spki_hash[:16]}… ({info.subject})")
+            actions.append(f"blocked SPKI {info.spki_hash[:16]}… of {info.subject} "
+                           f"(fp {info.fingerprint[:16]}…)")
             continue
         kept.append(c)
     if not actions:
         actions.append("nothing matched — store already clean")
+    else:
+        actions.append(f"summary: {len(certs) - len(kept)} of {len(certs)} certs distrusted, "
+                       f"{len(kept)} kept")
     return kept, actions

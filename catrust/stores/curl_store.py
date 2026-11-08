@@ -40,9 +40,12 @@ class CurlStore(TrustStore):
         return out
 
     def remediate(self, scenario: Scenario, mode: RemediationMode = RemediationMode.SPKI) -> RemediationResult:
-        kept, actions = _bundle.remove_matching(self._certs(), scenario, mode)
+        certs = self._certs()
+        kept, actions = _bundle.remove_matching(certs, scenario, mode)
         _bundle.write_bundle(self.bundle_path(), kept)
-        return RemediationResult(self.id, success=True, actions=[f"mode={mode.value}"] + actions)
+        actions = [f"store file: {self.bundle_path()} (roots {len(certs)} -> {len(kept)})",
+                   _bundle.mode_header(mode)] + actions
+        return RemediationResult(self.id, success=True, actions=actions)
 
     def cafile(self) -> Path | None:
         if self.real:

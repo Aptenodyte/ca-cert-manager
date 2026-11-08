@@ -63,8 +63,10 @@ class SystemStore(TrustStore):
             for c in kept:
                 fp = _bundle.root_info(c).fingerprint[:8]
                 (d / f"{fp}.pem").write_text(_bundle.cert_to_pem(c))
-        return RemediationResult(self.id, success=True,
-                                 actions=[f"mode={mode.value}"] + actions)
+        actions = [f"store file: {self.bundle_path()} (roots {len(certs)} -> {len(kept)}), "
+                   f"hashed dir {self.store_path()} synced",
+                   _bundle.mode_header(mode)] + actions
+        return RemediationResult(self.id, success=True, actions=actions)
 
     def cafile(self) -> Path | None:
         if self.real:

@@ -125,6 +125,13 @@ createApp({
         this.scenarioName = (data.scenario && data.scenario.name) || "";
         this.log(`audit: ${this.stores.length} stores, ${this.affectedCount} affected, ` +
                  `${this.blocklist.length} blocklist entries`, this.affectedCount ? "err" : "ok");
+        for (const s of this.stores) {
+          const n = (s.alerts || []).length + (s.findings || []).length;
+          const first = ((s.findings || [])[0] || (s.alerts || [])[0] || {});
+          const detail = first.detail || first.reason || first.issuer || "";
+          if (n) this.log(`  ⚠ ${s.name}: ${s.total_roots} roots, ${n} alert(s) — ${detail}`, "err");
+          else this.log(`  ✓ ${s.name}: ${s.total_roots} roots, ok`, "ok");
+        }
       } catch (e) { this.log("audit failed: " + e.message, "err"); }
       this.busy = false;
     },
@@ -135,6 +142,10 @@ createApp({
         const data = await this.post("/api/crl/update");
         this.blocklist = data.entries || [];
         this.log(`CRL update: ${this.blocklist.length} untrusted entries`, "warn");
+        const bySrc = {};
+        for (const e of this.blocklist) bySrc[e.source || "CRL"] = (bySrc[e.source || "CRL"] || 0) + 1;
+        for (const [src, n] of Object.entries(bySrc))
+          this.log(`  📥 ${n} revoked entr${n === 1 ? "y" : "ies"} from ${src}`, "warn");
         await this.audit();
       } catch (e) { this.log("CRL update failed: " + e.message, "err"); }
       this.busy = false;

@@ -87,8 +87,10 @@ class ChromeStore(TrustStore):
 
     def remediate(self, scenario: Scenario, mode: RemediationMode = RemediationMode.SPKI) -> RemediationResult:
         self.store_path().mkdir(parents=True, exist_ok=True)
-        actions = [f"mode={mode.value}"]
+        from . import _bundle
+        actions = [_bundle.mode_header(mode)]
         serials = parse_crlset(self.crlset_path().read_bytes()) if self.crlset_path().exists() else []
+        roots_before = len(self._load_roots())
         if mode == RemediationMode.SPKI:
             leaf_serial = int(scenario.revoked_serial, 16)
             if leaf_serial not in serials:
@@ -98,6 +100,7 @@ class ChromeStore(TrustStore):
             else:
                 actions.append("serial already in CRLSet")
             self.crlset_path().write_bytes(build_crlset(serials))
+            kept = self._load_roots()
         else:
             roots = self._load_roots()
             kept = []
@@ -111,6 +114,9 @@ class ChromeStore(TrustStore):
             pol = {"distrusted_roots": [scenario.compromised_root_fingerprint],
                    "distrusted_spkis": sorted(bad_spkis)}
             self._policy_json().write_text(json.dumps(pol, indent=2))
+        actions.append(f"wrote crlset.bin ({len(serials)} serials), "
+                       f"trusted_roots.json ({len(kept)} roots), policy.json "
+                       f"under {self.store_path()}")
         return RemediationResult(self.id, success=True, actions=actions)
 
     def cafile(self) -> Path | None:

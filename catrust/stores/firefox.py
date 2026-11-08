@@ -78,7 +78,7 @@ class FirefoxStore(TrustStore):
 
     def remediate(self, scenario: Scenario, mode: RemediationMode = RemediationMode.SPKI) -> RemediationResult:
         certs, onecrl = self._load()
-        actions = [f"mode={mode.value}"]
+        actions = [_bundle.mode_header(mode)]
         if mode == RemediationMode.ROOT:
             kept = []
             for c in certs:
@@ -105,6 +105,8 @@ class FirefoxStore(TrustStore):
         self._save(certs, onecrl)
         if not actions[1:]:
             actions.append("nothing to do — already distrusted")
+        actions.append(f"wrote {self.profile_dir()}/certs.json ({len(certs)} roots) + "
+                       f"onecrl.json ({len(onecrl)} distrusted entries)")
         return RemediationResult(self.id, success=True, actions=actions)
 
     def cafile(self) -> Path | None:
