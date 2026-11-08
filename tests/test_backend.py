@@ -63,6 +63,29 @@ def test_mitm_attacker_cert(sandbox_env):
     assert not any(post.values())                              # root distrust blocks the MITM
 
 
+def test_mitmdemo_phishing_flow(sandbox_env):
+    """mitmdemo (backs demo/run-mitm-docker-demo.sh): phishing server serves a fake
+    site; victim fetch/login accepted pre-fix (even CRL-aware), blocked post-fix."""
+    from rootwatch import manager, mitmdemo
+    from rootwatch.stores import all_stores
+    from rootwatch.stores.base import RemediationMode
+    mitmdemo.reset()                       # fixture planted; reset to clean first
+    assert mitmdemo.inject()["planted"]
+    info = mitmdemo.mint_and_start(port=0, hostname="www.t-mobile.com")
+    assert info["url"].startswith("https://127.0.0.1:")
+    sc = "scenarios/emudhra.yaml"
+    pre = mitmdemo.victim_fetch(sc, "system")
+    assert pre["accepted"] and "T-Mobile" in pre["body"]
+    assert all(p["success"] for p in mitmdemo.victim_probe(sc, "system")["probes"])  # incl. CRL clients
+    li = mitmdemo.victim_login(sc, "system",
+                               {"username": "bob@example.com", "password": "hunter2"})
+    assert li["accepted"] and any(e["fields"].get("password") == "hunter2" for e in li["loot"])
+    manager.remediate_selected(all_stores(), [], manager.load_scenario(sc), RemediationMode.ROOT)
+    assert not mitmdemo.victim_fetch(sc, "system")["accepted"]
+    assert not any(p["success"] for p in mitmdemo.victim_probe(sc, "system")["probes"])
+    mitmdemo.stop()
+
+
 def test_stores_assess_audit_remediate(sandbox_env):
     from rootwatch import manager
     from rootwatch.stores import all_stores

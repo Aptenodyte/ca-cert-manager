@@ -51,7 +51,11 @@ def cmd_audit(args) -> int:
     print(f"=== system-wide assessment (scenario: {sc.name}) ===")
     assess = manager.assess_all(stores)
     aud = manager.audit_all(stores, sc)
-    bl = manager.load_blocklist_state()
+    # same blocklist as the web audit: scenario CRL + compromised SPKIs + persisted state
+    bl = manager.collect_blocklist(
+        crl_pems=[p for p in [sc.crl_pem] if p] or None,
+        extra_spki_hashes=sc.compromised_spki_hashes or None,
+    ) + manager.load_blocklist_state()
     aff = manager.affected_stores(stores, bl) if bl else set()
     for sid, a in assess.items():
         status = "ALERT" if (aud[sid] or sid in aff) else "ok"

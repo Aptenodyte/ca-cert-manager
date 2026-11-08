@@ -94,6 +94,25 @@ FRESH cert from the compromised CA — not on the CRL — so pre-fix even CRL-aw
 clients accept it (`pki.mint_attacker_cert` + `server.start_server_with_cert`);
 only root distrust (`remediate --mode root`) stops it.
 
+Video demo (`demo/run-mitm-docker-demo.sh`): victim Docker container (`--network host`,
+sandbox mounted at /sandbox, repo at /rootwatch) = "Bob" signing in to a fake
+www.t-mobile.com served by a host phishing server (`rootwatch/mitmdemo.py`:
+`mint_and_start` serves PHISH_PAGE, captures POSTed credentials to
+`<sandbox>/attacker/loot.jsonl`). Pre-fix curl/urllib accept (even CRL-aware),
+credentials are exfiltrated; then `pip install cryptography pyyaml requests` +
+`PYTHONPATH=/rootwatch ROOTWATCH_ROOT=/sandbox python3 -m rootwatch.cli remediate
+--mode root` INSIDE the container fixes all 8 stores and the retry is rejected.
+
+Full visual variant (`demo/run-mitm-browser-demo.sh`): victim container with a real
+desktop — Xvfb :99 + x11vnc + noVNC (host opens http://127.0.0.1:6080/vnc.html), Firefox
+(profile /root/rw-profile) whose NSS DB is synced from the mounted sandbox bundle via
+/usr/local/bin/sync-browser-trust (re-run after remediation), xterm open, container
+/etc/hosts maps www.t-mobile.com -> 127.0.0.1, `--network host` reaches the host MITM
+server on :9443. Video flow: green-lock phishing page -> Bob signs in -> loot in
+<sandbox>/attacker/loot.jsonl -> `remediate --mode root` in the container xterm ->
+`sync-browser-trust` -> reload shows Firefox's "Potential Security Risk Ahead".
+`--cleanup` stops the MITM server and removes the container (pid/cid in /tmp/rootwatch-mitm-browser.*).
+
 ## Remediation modes (SPKI vs root — expect judges to ask)
 - `spki` (default, surgical): block only the compromised keys' SPKI sha256 hashes
   (OneCRL-style). Other certs from that CA and future key rotations keep working.

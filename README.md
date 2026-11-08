@@ -30,6 +30,15 @@ python3 -m venv .venv && .venv/bin/pip install -e ".[dev]"   # Linux & macOS
 ./demo/run-mitm-demo.sh                                        # simulated MITM in-sandbox: fresh cert from the
                                                                # compromised CA (NOT on the CRL) — even CRL-aware
                                                                # clients accept it pre-fix; root distrust stops it
+./demo/run-mitm-docker-demo.sh                                 # VIDEO demo: phishing site for www.t-mobile.com in a
+                                                               # Docker victim container — Bob's credentials get
+                                                               # exfiltrated, then RootWatch is installed IN the
+                                                               # container and blocks the MITM (mode=root)
+./demo/run-mitm-browser-demo.sh                                # FULL VISUAL demo: real Firefox desktop inside the
+                                                               # victim container via noVNC — open
+                                                               # http://127.0.0.1:6080/vnc.html, watch Bob get phished
+                                                               # at www.t-mobile.com, then fix it live in the
+                                                               # container terminal (--cleanup when done)
 ```
 
 Other commands:
@@ -61,6 +70,29 @@ pre-fix even CRL-aware clients (`requests` with `VERIFY_CRL_CHECK_LEAF`,
 After one `remediate --mode root` across all 8 stores, every client **rejects** it.
 That is the eMudhra lesson: when the root key is compromised, only distrusting the
 root is sufficient.
+
+**Video demo** (`./demo/run-mitm-docker-demo.sh`): a victim Docker container
+(`--network host`, sandbox stores bind-mounted at `/sandbox`) plays **Bob**, who
+signs in to a fake `www.t-mobile.com` served by a host-side phishing server with a
+fresh eMudhra-signed cert (`curl --resolve www.t-mobile.com:9443:127.0.0.1`).
+Pre-fix the TLS handshake is accepted — even by a CRL-aware client — and Bob's
+credentials land in the attacker's loot file (`💀 stolen: {...}`). Then RootWatch
+is pip-installed **inside the victim container**, `rootwatch audit` shows all 8
+stores ALERT, one `rootwatch remediate --mode root` fixes them (the mounted bundle
+updates in place), and Bob's reload is **rejected** (`unable to get local issuer
+certificate`). ✅ DEMO PASS.
+
+**Full visual demo** (`./demo/run-mitm-browser-demo.sh`): sets up a victim container
+with a real desktop (Xvfb + x11vnc + noVNC on `:6080`, Firefox + xterm). Open
+`http://127.0.0.1:6080/vnc.html` in your host browser → you see the container desktop.
+The container's `/etc/hosts` maps `www.t-mobile.com` → 127.0.0.1 and its Firefox NSS
+DB is synced from the mounted sandbox bundle (`sync-browser-trust`), so Firefox loads
+the phishing page with a **green lock** (cert issued by "eMudhra Demo Issuing CA" —
+click the lock to show it). Sign in as Bob → credentials appear in
+`.sandbox/attacker/loot.jsonl`. Then, in the container's xterm, run
+`ROOTWATCH_ROOT=/sandbox PYTHONPATH=/rootwatch python3 -m rootwatch.cli remediate --mode root`,
+`sync-browser-trust`, and reload Firefox → **"Warning: Potential Security Risk
+Ahead"** — the MITM is blocked. `./demo/run-mitm-browser-demo.sh --cleanup` tears down.
 
 ## The dashboard (Vue 3, vendored — no build step, works offline)
 
@@ -124,6 +156,8 @@ scenarios/emudhra.yaml   # the mock incident (fingerprint/serial populated by `s
 demo.sh                  # one-shot scripted demo via the web API
 demo/run-attack-demo.sh  # live attack demo in a Docker victim container
 demo/run-mitm-demo.sh    # simulated MITM demo (in-sandbox, no Docker)
+demo/run-mitm-docker-demo.sh  # video demo: phishing victim container + in-container fix
+demo/run-mitm-browser-demo.sh # full visual demo: noVNC desktop in victim container, live fix
 tests/
 ```
 
