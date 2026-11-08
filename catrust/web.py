@@ -98,15 +98,12 @@ def create_app(scenario_path: str = "scenarios/emudhra.yaml", real: bool = False
         app.config["CATRUST_SERVER"] = (thread, port)
         return port
 
-    def probe_payload() -> dict:
+    def probe_payload(store_id: str | None = None) -> dict:
         port = ensure_server()
         sc = scenario()
-        cafile = None
-        for st in stores():
-            cf = st.cafile()
-            if cf is not None and Path(cf).exists():
-                cafile = str(cf)
-                break
+        # scope the probe CAfile to the requested store (default: first with one),
+        # so pre/post remediation probes reflect the store that was actually fixed
+        cafile = manager.probe_cafile(stores(), store_id)
         url = f"https://127.0.0.1:{port}/"
         results = probes.probe_all(url, cafile=cafile, crl_pem=sc.crl_pem or None)
         return {"server_url": url, "url": url, "cafile": cafile,
@@ -262,9 +259,10 @@ def create_app(scenario_path: str = "scenarios/emudhra.yaml", real: bool = False
 
     @app.get("/api/probe")
     def api_probe():
-        """Run the handshake probe matrix against the mock server (starts it if needed)."""
+        """Run the handshake probe matrix against the mock server (starts it if needed).
+        Optional ?store_id=<id> scopes the probe CAfile to that store's trust roots."""
         try:
-            return jsonify(probe_payload())
+            return jsonify(probe_payload(request.args.get("store_id")))
         except Exception as e:  # noqa: BLE001
             return _err(e)
 

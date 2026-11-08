@@ -148,6 +148,41 @@ def update_crl(crl_pem: str | None = None, url: str | None = None) -> list[Block
     return [BlocklistEntry(**v) for v in merged.values()]
 
 
+def probe_cafile(stores: list[TrustStore], store_id: str | None = None) -> str | None:
+    """CAfile for the probe matrix, scoped to one store when `store_id` is given.
+
+    Stores with a real bundle (system/requests/curl) use their own cafile. DB/JSON
+    stores (firefox/chrome) have no cafile, so we reconstruct one: the system bundle
+    filtered to exactly the roots that store currently trusts — which is what makes
+    pre/post remediation probes reflect *that* store. Falls back to the first
+    store with a cafile when store_id is None or unknown."""
+    chosen = next((s for s in stores if s.id == store_id), None) if store_id else None
+    if chosen is not None:
+        cf = chosen.cafile()
+        if cf and Path(cf).exists():
+            return str(cf)
+        target = chosen  # DB/JSON store: reconstruct its bundle below
+    else:
+        for st in stores:  # default: first store with a real cafile
+            cf = st.cafile()
+            if cf and Path(cf).exists():
+                return str(cf)
+        target = next((s for s in stores if not s.cafile()), None)
+    if target is None:
+        return None
+    sys_bundle = sandbox_root() / "etc" / "ssl" / "ca-bundle.crt"
+    if not sys_bundle.exists():
+        return None
+    from .stores import _bundle
+    import tempfile
+    fps = {r.fingerprint for r in target.assess().roots}
+    kept = [c for c in _bundle.load_certs(sys_bundle) if _bundle.root_info(c).fingerprint in fps]
+    f = tempfile.NamedTemporaryFile("w", suffix=".pem", delete=False)
+    f.write("".join(_bundle.cert_to_pem(c) for c in kept))
+    f.close()
+    return f.name
+
+
 def load_blocklist_state() -> list[BlocklistEntry]:
     state_file = sandbox_root() / "blocklist.json"
     if not state_file.exists():

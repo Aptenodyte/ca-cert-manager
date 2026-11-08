@@ -6,6 +6,7 @@ import pytest
 def client(tmp_path, monkeypatch):
     monkeypatch.setenv("CATRUST_ROOT", str(tmp_path / "sandbox"))
     monkeypatch.setenv("CATRUST_REAL_CRL_URLS", "")  # hermetic: no live CDP fetches
+    monkeypatch.setenv("CATRUST_SERVER_PORT", "0")   # ephemeral port: tests run in parallel with a live dashboard
     from catrust import sandbox
     sandbox.setup_sandbox(tmp_path / "sandbox")
     from catrust.web import create_app
@@ -59,3 +60,17 @@ def test_probe_has_server_url(client):
     data = r.get_json()
     assert data["server_url"].startswith("https://127.0.0.1:")
     assert len(data["probes"]) == 4
+
+
+def test_probe_scoped_to_remediated_store(client):
+    """?store_id= must scope the probe CAfile to that store: after remediating ONLY
+    firefox, firefox-scoped probes reject while system-scoped probes still accept."""
+    pre = client.get("/api/probe?store_id=firefox").get_json()
+    assert any(p["success"] for p in pre["probes"] if not p["crl_checked"])  # attack works
+    r = client.post("/api/remediate", json={"store_id": "firefox", "mode": "root"})
+    assert r.get_json()["success"]
+    ff = client.get("/api/probe?store_id=firefox").get_json()
+    assert all(not p["success"] for p in ff["probes"]), "firefox-scoped probes must reject post-fix"
+    sy = client.get("/api/probe?store_id=system").get_json()
+    assert any(p["success"] for p in sy["probes"] if not p["crl_checked"]), \
+        "system store untouched — its probes must still accept (pre-fix)"

@@ -72,7 +72,11 @@ script `demo/run-attack-demo.sh` (Docker victim container), not a UI button.
   signature-verified against the issuer cert in the sandbox bundle when present
   (forged CRLs are dropped); unreachable CDPs are skipped (offline-safe).
 - `POST /api/remediate` → `{store_id|store_ids, mode: "spki"|"root"}` → `{success, actions, results}`
-- `GET /api/probe` → `{server_url, cafile, probes[]}` (starts mock server on :8443 if needed)
+- `GET /api/probe` → `{server_url, cafile, probes[]}` (starts mock server on :8443 if needed).
+  Optional `?store_id=<id>` scopes the probe CAfile to that store (`manager.probe_cafile`):
+  its own bundle for bundle stores, or the system bundle filtered to that store's trusted
+  roots for DB/JSON stores (firefox/chrome) — so pre/post remediation probes reflect the
+  store that was actually fixed
 - `POST /api/attack-demo` → `{mode, before, remediation, after, stores}` (for demo scripts; NOT a UI button)
 
 ## Demo narrative (what judges should see)
