@@ -3,10 +3,11 @@ from rootwatch.stores import all_stores
 from rootwatch.stores.base import Scenario
 
 
-def test_registry_has_five_stores():
+def test_registry_has_eight_stores():
     stores = all_stores(real=False)
     ids = {s.id for s in stores}
-    assert ids == {"system", "requests", "curl", "firefox", "chrome"}
+    assert ids == {"system", "requests", "curl", "firefox", "chrome",
+                   "java", "p11kit", "docker"}
 
 
 def test_scenario_dataclass():

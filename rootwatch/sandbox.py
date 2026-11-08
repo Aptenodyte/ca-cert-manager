@@ -73,6 +73,35 @@ def _real_firefox_roots() -> list[dict]:
     return out
 
 
+def _real_java_roots() -> list[dict]:
+    """Export trusted roots from the real Java cacerts via keytool (JKS, storepass
+    'changeit' on Debian); fall back to the system bundle as the mirror source."""
+    if not shutil.which("keytool"):
+        return []
+    for ks in (Path("/etc/ssl/certs/java/cacerts"),
+               Path("/usr/lib/jvm/default-java/lib/security/cacerts")):
+        if not ks.exists():
+            continue
+        r = subprocess.run(["keytool", "-list", "-rfc", "-keystore", str(ks),
+                            "-storepass", "changeit"], capture_output=True, text=True)
+        if "BEGIN CERTIFICATE" in r.stdout:
+            return _certs_json_from_pem(r.stdout)
+    return []
+
+
+def _real_p11kit_bundle() -> str:
+    """Real p11-kit anchors (RHEL/Fedora layout) if present, else the system bundle."""
+    for d in (Path("/etc/pki/ca-trust/source/anchors"),
+              Path("/usr/share/p11-kit/anchors"),
+              Path("/usr/local/share/ca-certificates")):
+        if d.exists():
+            pems = [f.read_text() for f in sorted(d.glob("*.pem")) + sorted(d.glob("*.crt"))
+                    if f.is_file()]
+            if pems:
+                return "".join(pems)
+    return ""
+
+
 def _certs_json_from_pem(pem: str) -> list[dict]:
     out = []
     for c in _bundle.load_certs(_pem_bytes(pem)):
@@ -129,6 +158,28 @@ def setup_sandbox(root: Path | None = None, use_real: bool = True,
         json.dumps(_certs_json_from_pem(real_sys), indent=2))
     from .stores.chrome import build_crlset
     (chrome / "crlset.bin").write_bytes(build_crlset([]))
+
+    # java cacerts: real keystore export via keytool when available, else system mirror
+    java = root / "java"
+    java.mkdir(parents=True, exist_ok=True)
+    (java / "cacerts.json").write_text(
+        json.dumps(_real_java_roots() or _certs_json_from_pem(real_sys), indent=2))
+    (java / "distrusted.json").write_text("[]")
+
+    # p11-kit: real anchors if present, else system bundle
+    p11 = root / "p11kit"
+    p11.mkdir(parents=True, exist_ok=True)
+    _bundle.write_bundle(p11 / "ca-bundle.pem",
+                         _bundle.load_certs(_pem_bytes(_real_p11kit_bundle() or real_sys)))
+    (p11 / "distrusted.json").write_text("[]")
+
+    # docker certs.d: copy real per-registry CAs if any exist, else empty tree
+    dock = root / "docker" / "certs.d"
+    real_dock = Path("/etc/docker/certs.d")
+    if real_dock.exists():
+        shutil.copytree(real_dock, dock, dirs_exist_ok=True)
+    else:
+        dock.mkdir(parents=True, exist_ok=True)
 
     (root / "blocklist.json").write_text("[]")
     (root / "known_bad.json").write_text("[]")
@@ -190,6 +241,22 @@ def plant_incident(root: Path | None = None) -> Path:
 
     add_to_json(root / "mozilla" / "firefox" / "demo.default-release" / "certs.json")
     add_to_json(root / "chrome" / "trusted_roots.json")
+    add_to_json(root / "java" / "cacerts.json")
+
+    # p11-kit anchors bundle
+    p11_bundle = root / "p11kit" / "ca-bundle.pem"
+    if p11_bundle.exists():
+        add_to_bundle(p11_bundle)
+
+    # docker certs.d: plant a registry CA under a demo registry name
+    reg = root / "docker" / "certs.d" / "registry.emudhra.local"
+    reg.mkdir(parents=True, exist_ok=True)
+    ca = reg / "ca.crt"
+    existing = _bundle.load_certs(ca) if ca.exists() else []
+    have = {_bundle.root_info(c).fingerprint for c in existing}
+    fresh = [c for c in bad if _bundle.root_info(c).fingerprint not in have]
+    if fresh:
+        _bundle.write_bundle(ca, existing + fresh)
 
     KNOWN_BAD_FPS.add(p.root_fingerprint)
     (root / "known_bad.json").write_text(json.dumps([p.root_fingerprint]))

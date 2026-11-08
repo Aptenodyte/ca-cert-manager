@@ -7,7 +7,8 @@ in this repo. Full details: `docs/PLAN.md`, per-person orders: `docs/PERSON-A.md
 ## What this is
 RootWatch: a system-wide CA distrust manager for hackathons/demos. It audits every
 fragmented trust store on a machine (system bundle, Firefox NSS/OneCRL, Chrome CRLSet,
-certifi/requests, curl), distrusts a compromised root CA (mock "eMudhra" scenario) in one
+certifi/requests, curl, Java cacerts, p11-kit shared trust, Docker certs.d),
+distrusts a compromised root CA (mock "eMudhra" scenario) in one
 action, and proves the fix with real TLS handshakes against a mock localhost server
 (127.0.0.1:8443) presenting a **revoked** cert.
 
@@ -16,7 +17,8 @@ action, and proves the fix with real TLS handshakes against a mock localhost ser
    `./.sandbox`). Never touch real system stores unless `--real` is passed explicitly.
    Exception (read-only): `cli setup` *copies* the machine's real trust stores
    (`/etc/ssl/certs` bundle, certifi `cacert.pem`, Firefox NSS via `certutil` when
-   available, Chrome's use of the system roots) into the sandbox — **clean, no fake
+   available, Chrome's use of the system roots, Java `cacerts` via `keytool`, p11-kit
+   anchors, Docker `certs.d`) into the sandbox — **clean, no fake
    data injected by default**. The compromised eMudhra root is loaded only on demand:
    `cli inject` / `demo/load-emudhra.sh` (`sandbox.plant_incident`), which sets
    `planted: true` in `scenario.runtime.json` and writes `known_bad.json`.

@@ -36,6 +36,9 @@ def all_stores(real: bool = False) -> list[TrustStore]:
     from .curl_store import CurlStore
     from .firefox import FirefoxStore
     from .chrome import ChromeStore
+    from .java import JavaStore
+    from .p11kit import P11KitStore
+    from .dockercerts import DockerCertsStore
 
     return [
         SystemStore(real=real),
@@ -43,4 +46,7 @@ def all_stores(real: bool = False) -> list[TrustStore]:
         CurlStore(real=real),
         FirefoxStore(real=real),
         ChromeStore(real=real),
+        JavaStore(real=real),
+        P11KitStore(real=real),
+        DockerCertsStore(real=real),
     ]

@@ -49,8 +49,9 @@ def test_stores_assess_audit_remediate(sandbox_env):
     stores = all_stores()
     sc = manager.load_scenario("scenarios/emudhra.yaml")
     assess = manager.assess_all(stores)
-    assert set(assess) == {"system", "requests", "curl", "firefox", "chrome"}
-    assert all(a.total_roots >= 3 for a in assess.values())
+    assert set(assess) == {"system", "requests", "curl", "firefox", "chrome",
+                           "java", "p11kit", "docker"}
+    assert all(a.total_roots >= 2 for a in assess.values())  # docker certs.d starts with just the planted CA
     aud = manager.audit_all(stores, sc)
     assert all(v for v in aud.values())  # every store alerted pre-fix
     before = manager.assess_all(stores)["system"].total_roots
@@ -181,6 +182,24 @@ def test_default_setup_is_clean_then_plant_adds_incident(tmp_path, monkeypatch):
     assert json.loads((root / "known_bad.json").read_text())
     assert any(manager.audit_all(stores, sc).values()), "planted incident must alert"
     assert "system" in manager.affected_stores(stores, manager.load_blocklist_state())
+
+
+def test_java_p11kit_docker_stores(sandbox_env):
+    """New stores: seeded from real data, planted incident alerts, root remediation cleans."""
+    from rootwatch import manager
+    from rootwatch.stores import all_stores
+    from rootwatch.stores.base import RemediationMode
+    sc = manager.load_scenario("scenarios/emudhra.yaml")
+    stores = {s.id: s for s in all_stores()}
+    for sid in ("java", "p11kit", "docker"):
+        assert sid in stores
+        a = stores[sid].assess()
+        assert a.total_roots > 0, f"{sid} should be seeded/planted with roots"
+        assert stores[sid].audit(sc), f"{sid} should alert on the planted incident"
+    res = manager.remediate_selected(list(stores.values()), [], sc, RemediationMode.ROOT)
+    for sid in ("java", "p11kit", "docker"):
+        assert res[sid].success, res[sid].actions
+        assert stores[sid].audit(sc) == [], f"{sid} should be clean after root remediation"
 
 
 def test_chrome_crlset_roundtrip():

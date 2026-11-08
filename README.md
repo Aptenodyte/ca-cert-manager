@@ -9,7 +9,8 @@ certificates kept working.
 
 **RootWatch closes that gap: instead of waiting for per-app patches, we patch the CA trust
 stores ourselves — centrally, in one action.** It audits every fragmented trust store on a
-machine (system bundle, Firefox NSS/OneCRL, Chrome CRLSet, certifi/requests, curl),
+machine (system bundle, Firefox NSS/OneCRL, Chrome CRLSet/policy, certifi/requests,
+curl, Java `cacerts`, p11-kit shared trust, Docker `certs.d` — 8 stores),
 distrusts a compromised root CA (the mock **eMudhra** scenario) everywhere it appears, and
 **physically proves the fix** with real TLS handshakes against a mock localhost server
 (`127.0.0.1:8443`) presenting a **revoked** certificate.
@@ -104,7 +105,9 @@ rootwatch/
 ├── cli.py            # scripted CLI (setup / audit / remediate / probe / serve / web / demo)
 ├── web.py            # Flask API + dashboard host (Person B)
 ├── webapp/           # Vue 3 dashboard (vendored, no build step)
-└── stores/           # system bundle, Firefox NSS/OneCRL, Chrome CRLSet, certifi, curl
+└── stores/           # system bundle, certifi/requests, curl, Firefox NSS/OneCRL,
+                       # Chrome CRLSet/policy, Java cacerts, p11-kit/NSS shared trust,
+                       # Docker certs.d per-registry CAs  (8 stores)
 scenarios/emudhra.yaml   # the mock incident (fingerprint/serial populated by `setup`)
 demo.sh                  # one-shot scripted demo via the web API
 demo/run-attack-demo.sh  # live attack demo in a Docker victim container

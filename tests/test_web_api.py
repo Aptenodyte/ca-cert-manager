@@ -19,8 +19,9 @@ def test_audit_alerts_all_stores(client):
     r = client.post("/api/audit")
     assert r.status_code == 200
     data = r.get_json()
-    assert set(s["id"] for s in data["stores"]) == {"system", "requests", "curl", "firefox", "chrome"}
-    assert sorted(data["affected"]) == ["chrome", "curl", "firefox", "requests", "system"]
+    ALL = {"system", "requests", "curl", "firefox", "chrome", "java", "p11kit", "docker"}
+    assert set(s["id"] for s in data["stores"]) == ALL
+    assert sorted(data["affected"]) == sorted(ALL)
     assert any(s["alerts"] for s in data["stores"])
     assert data["blocklist"], "CRL blocklist should be populated from the scenario CRL"
 
@@ -44,7 +45,8 @@ def test_remediate_spki_then_root_modes(client):
     assert r.get_json()["success"]
     # root mode on ALL stores via store_ids list
     r = client.post("/api/remediate", json={
-        "store_ids": ["system", "requests", "curl", "firefox", "chrome"], "mode": "root"})
+        "store_ids": ["system", "requests", "curl", "firefox", "chrome",
+                      "java", "p11kit", "docker"], "mode": "root"})
     data = r.get_json()
     assert data["success"], data
     assert all(v["success"] for v in data["results"].values())
