@@ -104,7 +104,14 @@ In-container helpers (for the video or for checking state):
 - `browser-trust-check` → prints whether *Firefox's own NSS DB* still trusts the
   phishing cert (`FIREFOX TRUSTS … MITM works` / `FIREFOX REJECTS … MITM blocked`)
 - `desktop-shot [file]` → PNG screenshot of the container desktop (video frames)
-- `sync-browser-trust` → re-import the sandbox bundle into Firefox's NSS DB
+- `sync-browser-trust` → re-import RootWatch's **Firefox store** into Firefox's NSS DB
+
+The container's Firefox trust is derived from RootWatch's **Firefox store**
+(`mozilla/firefox/<profile>/certs.json`) — the PEMs come from the sandbox system
+bundle, but *which* of them the browser trusts is decided by the Firefox store's root
+list. So clicking **☢️ Distrust entire root** on the **Firefox row** of the dashboard
+immediately untrusts the CA in the browser (and so does fixing the system bundle);
+the watcher re-syncs and restarts the browser in both cases.
 
 ## The dashboard (Vue 3, vendored — no build step, works offline)
 

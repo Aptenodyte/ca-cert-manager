@@ -118,6 +118,11 @@ Firefox caches its trust store in memory, so the NSS DB must be reloaded) -> the
 phishing tab shows Firefox's "Warning: Security Risk" with a ⛔ Not Secure padlock.
 Container helpers: browser-trust-check (does Firefox's NSS DB still trust the attacker
 chain?), desktop-shot (PNG of the desktop), sync-browser-trust (manual re-import).
+IMPORTANT: the container's Firefox trust is derived from RootWatch's FIREFOX store
+(mozilla/firefox/<profile>/certs.json decides WHICH roots are trusted; the system
+bundle only supplies the PEMs) — so remediating the Firefox row alone must untrust
+the CA in the browser. watch-trust therefore watches BOTH files and restarts Firefox
+whenever the trusted set shrinks.
 `--cleanup` stops the MITM server and removes the container
 (pid/cid in /tmp/rootwatch-mitm-browser.*). All MITM scripts now kill a stale MITM
 server from a previous run, remove leftover victim containers, fall back to an

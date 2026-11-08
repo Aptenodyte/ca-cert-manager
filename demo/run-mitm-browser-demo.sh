@@ -141,27 +141,46 @@ docker exec "$CONTAINER" sh -c "echo '127.0.0.1 $HOSTNAME' >> /etc/hosts"
 SYNC="$(mktemp /tmp/sync-browser-trust.XXXXXX.sh)"
 cat > "$SYNC" <<'SHEOF'
 #!/bin/sh
-# Sync Firefox's NSS trust DB from the sandbox system bundle (what the OS does when
-# the system CA bundle changes). Re-imports every cert in /sandbox/etc/ssl/ca-bundle.crt
-# as rootwatch-<sha256-fp>; stale rootwatch-* entries are deleted first.
+# Sync Firefox's NSS trust DB from RootWatch's FIREFOX store (the store that models
+# Firefox). The PEMs come from the sandbox system bundle; WHICH of them Firefox
+# trusts is decided by the Firefox store's root list (certs.json) — so distrusting
+# the root in the Firefox row of the dashboard is enough to untrust it in the browser,
+# exactly like the CLI does.
 set -e
 PROFILE=/root/rw-profile
 BUNDLE=/sandbox/etc/ssl/ca-bundle.crt
 DB="sql:$PROFILE"
+FFJSON=$(ls /sandbox/mozilla/firefox/*/certs.json 2>/dev/null | head -1)
 mkdir -p "$PROFILE"
 [ -f "$PROFILE/cert9.db" ] || certutil -N -d "$DB" --empty-password
+# drop previous rootwatch-* imports
 certutil -L -d "$DB" 2>/dev/null | grep '^rootwatch-' | while read -r a _; do
   certutil -D -d "$DB" -n "$a" 2>/dev/null || true
 done
+# fingerprints the Firefox store currently trusts
+: > /tmp/ff-allowed.txt
+if [ -n "$FFJSON" ]; then
+  python3 -c "
+import json,sys
+try: data=json.load(open('$FFJSON'))
+except Exception: data=[]
+for c in data:
+    fp=(c.get('fingerprint') or '').upper()
+    if fp: print(fp)
+" > /tmp/ff-allowed.txt 2>/dev/null || true
+fi
+# import the bundle certs that the Firefox store still trusts
 rm -f /tmp/rwcert*.pem
 awk -v pre=/tmp/rwcert 'BEGIN{c=0} /BEGIN CERTIFICATE/{c++} {print > (pre c ".pem")}' "$BUNDLE"
 for f in /tmp/rwcert*.pem; do
   [ -s "$f" ] || continue
-  fp=$(openssl x509 -in "$f" -noout -fingerprint -sha256 2>/dev/null | cut -d= -f2 | tr -d ':')
-  [ -n "$fp" ] && certutil -A -d "$DB" -n "rootwatch-$fp" -t "CT,C,C" -i "$f"
+  fp=$(openssl x509 -in "$f" -noout -fingerprint -sha256 2>/dev/null | cut -d= -f2 | tr -d ':' | tr 'a-f' 'A-F')
+  [ -n "$fp" ] || continue
+  grep -q "^$fp$" /tmp/ff-allowed.txt 2>/dev/null || continue
+  certutil -A -d "$DB" -n "rootwatch-$fp" -t "CT,C,C" -i "$f" 2>/dev/null || true
 done
 rm -f /tmp/rwcert*.pem
-echo "browser trust synced from $BUNDLE ($(certutil -L -d "$DB" 2>/dev/null | grep -c '^rootwatch-') roots)"
+echo "browser trust synced from the Firefox store ($(certutil -L -d "$DB" 2>/dev/null | grep -c '^rootwatch-') roots)"
 SHEOF
 docker cp "$SYNC" "$CONTAINER":/usr/local/bin/sync-browser-trust >/dev/null
 rm -f "$SYNC"
@@ -192,26 +211,45 @@ WATCH="$(mktemp /tmp/watch-trust.XXXXXX.sh)"
 cat > "$WATCH" <<'WEOF'
 #!/bin/sh
 # usage: watch-trust <phish-url> [dashboard-url]
+# Watches BOTH the system bundle and RootWatch's Firefox store; whenever either
+# changes, the browser's NSS DB is re-synced. If the trusted set shrank, Firefox is
+# restarted (a running Firefox caches its trust store in memory).
 PHISH="$1"; DASH="$2"
-last=""
+BUNDLE=/sandbox/etc/ssl/ca-bundle.crt
+FFJSON=$(ls /sandbox/mozilla/firefox/*/certs.json 2>/dev/null | head -1)
+log() { echo "$(date +%T) $*" >> /tmp/watch-trust.log; }
+last_sig=""
+last_roots=-1
 while true; do
-  n=$(grep -c "BEGIN CERTIFICATE" /sandbox/etc/ssl/ca-bundle.crt 2>/dev/null || echo 0)
-  if [ "$n" != "$last" ]; then
-    prev="$last"; last="$n"
-    /usr/local/bin/sync-browser-trust >> /tmp/watch-trust.log 2>&1
-    if [ -n "$prev" ] && [ "$n" -lt "$prev" ]; then
-      # the trust store shrank (root distrusted): reload it in Firefox
-      echo "trust store shrank ($prev -> $n): restarting Firefox to reload the NSS DB" >> /tmp/watch-trust.log
+  sig="$(md5sum "$BUNDLE" 2>/dev/null | cut -d' ' -f1)-$(md5sum "$FFJSON" 2>/dev/null | cut -d' ' -f1)"
+  if [ "$sig" != "$last_sig" ]; then
+    last_sig="$sig"
+    out=$(/usr/local/bin/sync-browser-trust 2>&1 | tail -1)
+    roots=$(certutil -L -d sql:/root/rw-profile 2>/dev/null | grep -c '^rootwatch-')
+    log "$out"
+    if [ "$last_roots" -gt 0 ] && [ "$roots" -lt "$last_roots" ]; then
+      log "trusted roots shrank ($last_roots -> $roots): restarting Firefox"
       pkill -f "firefox-esr --profile /root/rw-profile" 2>/dev/null
-      sleep 3
+      for i in 1 2 3 4 5 6 7 8 9 10; do
+        pgrep -f "firefox-esr --profile /root/rw-profile" >/dev/null || break
+        sleep 1
+      done
+      pkill -9 -f "firefox-esr --profile /root/rw-profile" 2>/dev/null
+      sleep 1
       rm -f /root/rw-profile/lock /root/.parentlock /root/rw-profile/.parentlock 2>/dev/null
       # drop the session store so Firefox doesn't show "Open previous tabs?" after the restart
       rm -f /root/rw-profile/sessionstore.jsonlz4 /root/rw-profile/sessionstore-backups/* 2>/dev/null
       DISPLAY=:99 HOME=/root firefox-esr --profile /root/rw-profile --no-remote \
         "$PHISH" ${DASH:+"$DASH"} >> /tmp/firefox.log 2>&1 &
-      sleep 4
+      sleep 5
       DISPLAY=:99 xdotool search --onlyvisible --class firefox windowmove 0 0 windowsize 1280 780 2>/dev/null || true
+      if pgrep -f "firefox-esr --profile /root/rw-profile" >/dev/null; then
+        log "Firefox restarted with the updated trust store"
+      else
+        log "ERROR: Firefox failed to restart"
+      fi
     fi
+    last_roots=$roots
   fi
   sleep 2
 done
