@@ -83,19 +83,17 @@ def _certs_json_from_pem(pem: str) -> list[dict]:
     return out
 
 
-def setup_sandbox(root: Path | None = None, use_real: bool = True) -> Path:
+def setup_sandbox(root: Path | None = None, use_real: bool = True,
+                  plant_compromised: bool = False) -> Path:
     """Create the sandbox tree: pki/ + every store seeded from the machine's REAL
-    trust stores (copied, never modified) plus the compromised eMudhra root.
-    Returns the sandbox root."""
+    trust stores (copied, never modified). Clean by default — NO fake data injected;
+    pass plant_compromised=True (or run plant_incident / demo/load-emudhra.sh) to load
+    the compromised eMudhra root into the stores for the demo. Returns the sandbox root."""
     root = Path(root) if root else sandbox_root()
     pki_dir = root / "pki"
     p = pki_mod.build_pki(pki_dir)
     pki_mod.revoke_leaf(p, pki_dir)
 
-    KNOWN_BAD_FPS.add(p.root_fingerprint)
-    (root / "known_bad.json").write_text(json.dumps([p.root_fingerprint]))
-
-    compromised_pem = p.root_cert_pem + p.inter_cert_pem
     real_sys = _real_system_bundle() if use_real else ""
     real_certifi = _real_certifi_bundle() if use_real else ""
     if use_real and not real_sys and not real_certifi:
@@ -104,33 +102,21 @@ def setup_sandbox(root: Path | None = None, use_real: bool = True) -> Path:
             f"{', '.join(REAL_BUNDLE_CANDIDATES)} and certifi's cacert.pem) — "
             "refusing to seed the sandbox with synthetic decoy roots")
 
-    def bundle_pem(real: str) -> str:
-        return real + compromised_pem
-
-    # system bundle (+ hashed dir)
+    # seed every store from the REAL bundles only — clean, no fake data by default
     sys_bundle = root / "etc" / "ssl" / "ca-bundle.crt"
-    _bundle.write_bundle(sys_bundle, _bundle.load_certs(_pem_bytes(bundle_pem(real_sys))))
+    _bundle.write_bundle(sys_bundle, _bundle.load_certs(_pem_bytes(real_sys)))
     sys_dir = root / "etc" / "ssl" / "certs"
     sys_dir.mkdir(parents=True, exist_ok=True)
     for c in _bundle.load_certs(sys_bundle):
         (sys_dir / f"{_bundle.root_info(c).fingerprint[:8]}.pem").write_text(_bundle.cert_to_pem(c))
 
-    # certifi + curl bundles
     _bundle.write_bundle(root / "certifi" / "cacert.pem",
-                         _bundle.load_certs(_pem_bytes(bundle_pem(real_certifi or real_sys))))
+                         _bundle.load_certs(_pem_bytes(real_certifi or real_sys)))
     _bundle.write_bundle(root / "curl" / "ca-bundle.crt",
-                         _bundle.load_certs(_pem_bytes(bundle_pem(real_sys))))
+                         _bundle.load_certs(_pem_bytes(real_sys)))
 
     # firefox: real NSS export if possible, else system bundle as the mirror source
-    ff_roots = _real_firefox_roots()
-    if not ff_roots:
-        ff_roots = _certs_json_from_pem(bundle_pem(real_sys))
-    else:
-        for c in _bundle.load_certs(_pem_bytes(compromised_pem)):
-            info = _bundle.root_info(c)
-            ff_roots.append({"subject": info.subject, "fingerprint": info.fingerprint,
-                             "spki_hash": info.spki_hash, "not_after": info.not_after,
-                             "sig_alg": info.sig_alg, "flags": info.flags, "source": "planted"})
+    ff_roots = _real_firefox_roots() or _certs_json_from_pem(real_sys)
     prof = root / "mozilla" / "firefox" / "demo.default-release"
     prof.mkdir(parents=True, exist_ok=True)
     (prof / "certs.json").write_text(json.dumps(ff_roots, indent=2))
@@ -139,14 +125,16 @@ def setup_sandbox(root: Path | None = None, use_real: bool = True) -> Path:
     # chrome: system roots (Chrome uses them on Linux) + empty synthetic CRLSet
     chrome = root / "chrome"
     chrome.mkdir(parents=True, exist_ok=True)
-    chrome_roots = _certs_json_from_pem(bundle_pem(real_sys))
-    (chrome / "trusted_roots.json").write_text(json.dumps(chrome_roots, indent=2))
+    (chrome / "trusted_roots.json").write_text(
+        json.dumps(_certs_json_from_pem(real_sys), indent=2))
     from .stores.chrome import build_crlset
     (chrome / "crlset.bin").write_bytes(build_crlset([]))
 
     (root / "blocklist.json").write_text("[]")
+    (root / "known_bad.json").write_text("[]")
     (root / "scenario.runtime.json").write_text(json.dumps({
         "name": "emudhra-2026",
+        "planted": False,
         "compromised_root_fingerprint": p.root_fingerprint,
         "revoked_serial": p.leaf_serial,
         "compromised_spki_hashes": [p.root_spki_hash, p.inter_spki_hash],
@@ -156,6 +144,61 @@ def setup_sandbox(root: Path | None = None, use_real: bool = True) -> Path:
         "root_cert_pem": p.root_cert_pem,
         "seeded_from_real_stores": bool(real_sys or real_certifi),
     }, indent=2))
+    if plant_compromised:
+        plant_incident(root)
+    return root
+
+
+def plant_incident(root: Path | None = None) -> Path:
+    """Load the compromised eMudhra root + issuing CA into every sandbox trust store.
+
+    This is the demo's attack step — run explicitly (demo/load-emudhra.sh or
+    `rootwatch inject`), never implicitly by `setup`. Idempotent."""
+    root = Path(root) if root else sandbox_root()
+    p = pki_mod.load_pki(root / "pki")
+    bad = _bundle.load_certs(_pem_bytes(p.root_cert_pem + p.inter_cert_pem))
+    bad_fps = {_bundle.root_info(c).fingerprint for c in bad}
+
+    def add_to_bundle(path: Path) -> int:
+        certs = _bundle.load_certs(path)
+        have = {_bundle.root_info(c).fingerprint for c in certs}
+        fresh = [c for c in bad if _bundle.root_info(c).fingerprint not in have]
+        if fresh:
+            _bundle.write_bundle(path, certs + fresh)
+        return len(fresh)
+
+    n_sys = add_to_bundle(root / "etc" / "ssl" / "ca-bundle.crt")
+    sys_dir = root / "etc" / "ssl" / "certs"
+    sys_dir.mkdir(parents=True, exist_ok=True)
+    for c in bad:
+        fp8 = _bundle.root_info(c).fingerprint[:8]
+        (sys_dir / f"{fp8}.pem").write_text(_bundle.cert_to_pem(c))
+    add_to_bundle(root / "certifi" / "cacert.pem")
+    add_to_bundle(root / "curl" / "ca-bundle.crt")
+
+    def add_to_json(path: Path) -> None:
+        entries = json.loads(path.read_text()) if path.exists() else []
+        have = {e.get("fingerprint") for e in entries}
+        for c in bad:
+            info = _bundle.root_info(c)
+            if info.fingerprint not in have:
+                entries.append({"subject": info.subject, "fingerprint": info.fingerprint,
+                                "spki_hash": info.spki_hash, "not_after": info.not_after,
+                                "sig_alg": info.sig_alg, "flags": info.flags, "source": "planted"})
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(json.dumps(entries, indent=2))
+
+    add_to_json(root / "mozilla" / "firefox" / "demo.default-release" / "certs.json")
+    add_to_json(root / "chrome" / "trusted_roots.json")
+
+    KNOWN_BAD_FPS.add(p.root_fingerprint)
+    (root / "known_bad.json").write_text(json.dumps([p.root_fingerprint]))
+    rt_file = root / "scenario.runtime.json"
+    rt = json.loads(rt_file.read_text()) if rt_file.exists() else {}
+    rt["planted"] = True
+    rt_file.write_text(json.dumps(rt, indent=2))
+    print(f"☠️  planted compromised eMudhra root+intermediate into sandbox stores "
+          f"({n_sys} new in system bundle, fp {p.root_fingerprint[:16]}…)")
     return root
 
 

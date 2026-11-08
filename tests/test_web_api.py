@@ -8,7 +8,7 @@ def client(tmp_path, monkeypatch):
     monkeypatch.setenv("ROOTWATCH_REAL_CRL_URLS", "")  # hermetic: no live CDP fetches
     monkeypatch.setenv("ROOTWATCH_SERVER_PORT", "0")   # ephemeral port: tests run in parallel with a live dashboard
     from rootwatch import sandbox
-    sandbox.setup_sandbox(tmp_path / "sandbox")
+    sandbox.setup_sandbox(tmp_path / "sandbox", plant_compromised=True)
     from rootwatch.web import create_app
     app = create_app("scenarios/emudhra.yaml", real=False)
     app.testing = True

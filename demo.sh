@@ -18,8 +18,9 @@ PY=.venv/bin/python
 PORT="${PORT:-8080}"
 BASE="http://127.0.0.1:$PORT"
 
-echo "=== [1/5] setup: sandbox + mock eMudhra PKI (root -> intermediate -> REVOKED leaf) ==="
+echo "=== [1/5] clean setup (real stores only) + load compromised eMudhra certs (attack step) ==="
 "$PY" -m rootwatch.cli setup
+./demo/load-emudhra.sh
 
 echo "=== [2/5] starting web dashboard on $BASE ==="
 "$PY" -m rootwatch.cli web --port "$PORT" &

@@ -12,7 +12,7 @@ def sandbox_env(tmp_path, monkeypatch):
     monkeypatch.setenv("ROOTWATCH_ROOT", str(root))
     monkeypatch.setenv("ROOTWATCH_REAL_CRL_URLS", "")  # hermetic: no live CDP fetches
     from rootwatch import sandbox as sb
-    sb.setup_sandbox(root)
+    sb.setup_sandbox(root, plant_compromised=True)  # tests exercise the planted incident
     return root
 
 
@@ -160,6 +160,27 @@ def test_forged_crl_signature_rejected(sandbox_env):
     assert manager._parse_crl(der) == []          # issuer IS in bundle, sig invalid
     # and the genuine scenario CRL (signed by the real inter key) is accepted:
     assert manager._parse_crl(pki.load_pki(sandbox_env / "pki").crl_pem)
+
+
+def test_default_setup_is_clean_then_plant_adds_incident(tmp_path, monkeypatch):
+    """No fake data by default: plain setup seeds only real stores (all ok);
+    plant_incident() (demo/load-emudhra.sh) loads the eMudhra certs -> alerts."""
+    import json
+    monkeypatch.setenv("ROOTWATCH_ROOT", str(tmp_path / "sandbox"))
+    monkeypatch.setenv("ROOTWATCH_REAL_CRL_URLS", "")
+    from rootwatch import manager, sandbox as sb
+    from rootwatch.stores import all_stores
+    root = sb.setup_sandbox(tmp_path / "sandbox")  # default: plant_compromised=False
+    sc = manager.load_scenario("scenarios/emudhra.yaml")
+    stores = all_stores()
+    rt = json.loads((root / "scenario.runtime.json").read_text())
+    assert rt["planted"] is False
+    assert json.loads((root / "known_bad.json").read_text()) == []
+    assert not any(manager.audit_all(stores, sc).values()), "clean sandbox must not alert"
+    sb.plant_incident(root)
+    assert json.loads((root / "known_bad.json").read_text())
+    assert any(manager.audit_all(stores, sc).values()), "planted incident must alert"
+    assert "system" in manager.affected_stores(stores, manager.load_blocklist_state())
 
 
 def test_chrome_crlset_roundtrip():

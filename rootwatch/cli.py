@@ -34,7 +34,14 @@ def cmd_setup(args) -> int:
     root = sandbox.setup_sandbox()
     print(f"✅ sandbox ready at {root}")
     print("   mock PKI in pki/ (root -> intermediate -> REVOKED leaf for localhost)")
-    print("   all 5 trust stores seeded from the machine's real trust stores + the compromised root")
+    print("   all 5 trust stores seeded CLEAN from the machine's real trust stores")
+    print("   (no incident planted — run `rootwatch inject` or demo/load-emudhra.sh to load the eMudhra certs)")
+    return 0
+
+
+def cmd_inject(args) -> int:
+    root = sandbox.plant_incident()
+    print(f"✅ eMudhra incident loaded into sandbox at {root}")
     return 0
 
 
@@ -121,6 +128,7 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--pki-dir", default=None, help="mock PKI dir (default: $ROOTWATCH_ROOT/pki)")
     sub = p.add_subparsers(dest="command", required=True)
     sub.add_parser("setup")
+    sub.add_parser("inject", help="load the compromised eMudhra root+CA into the sandbox stores (demo attack step)")
     sub.add_parser("audit")
     r = sub.add_parser("remediate")
     r.add_argument("--stores", default="all")
@@ -138,7 +146,8 @@ def build_parser() -> argparse.ArgumentParser:
 def main(argv: list[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
     handlers = {
-        "setup": cmd_setup, "audit": cmd_audit, "remediate": cmd_remediate,
+        "setup": cmd_setup, "inject": cmd_inject, "audit": cmd_audit,
+        "remediate": cmd_remediate,
         "probe": cmd_probe, "demo": cmd_demo, "serve": cmd_serve, "web": cmd_web,
     }
     return handlers[args.command](args)

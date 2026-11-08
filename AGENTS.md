@@ -16,9 +16,10 @@ action, and proves the fix with real TLS handshakes against a mock localhost ser
    `./.sandbox`). Never touch real system stores unless `--real` is passed explicitly.
    Exception (read-only): `cli setup` *copies* the machine's real trust stores
    (`/etc/ssl/certs` bundle, certifi `cacert.pem`, Firefox NSS via `certutil` when
-   available, Chrome's use of the system roots) into the sandbox, then plants the
-   compromised eMudhra root on top — so the dashboard shows the real ~150 roots plus
-   the incident. `scenario.runtime.json` records `seeded_from_real_stores: true`.
+   available, Chrome's use of the system roots) into the sandbox — **clean, no fake
+   data injected by default**. The compromised eMudhra root is loaded only on demand:
+   `cli inject` / `demo/load-emudhra.sh` (`sandbox.plant_incident`), which sets
+   `planted: true` in `scenario.runtime.json` and writes `known_bad.json`.
 2. **Contract stability.** Do not change signatures in `rootwatch/stores/base.py`,
    `rootwatch/probes.py`, `rootwatch/manager.py`, `rootwatch/pki.py`, `rootwatch/server.py`
    headers — the other workstream builds against them.
@@ -41,7 +42,8 @@ action, and proves the fix with real TLS handshakes against a mock localhost ser
 ```bash
 python3 -m venv .venv && .venv/bin/pip install -e .[dev]   # works on Linux & macOS
 .venv/bin/python -m pytest tests/ -q                        # tests
-.venv/bin/python -m rootwatch.cli setup                       # build sandbox + mock PKI
+.venv/bin/python -m rootwatch.cli setup                       # CLEAN sandbox from real stores + mock PKI
+.venv/bin/python -m rootwatch.cli inject                      # plant the compromised eMudhra root (demo attack step; demo/load-emudhra.sh)
 .venv/bin/python -m rootwatch.cli serve                       # mock TLS server :8443
 .venv/bin/python -m rootwatch.cli probe                       # handshake probes
 .venv/bin/python -m rootwatch.cli remediate                   # distrust root everywhere

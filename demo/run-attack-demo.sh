@@ -51,8 +51,9 @@ command -v docker >/dev/null 2>&1 || {
   exit 1
 }
 
-echo "=== [1/6] setup: sandbox + mock eMudhra PKI (root -> intermediate -> REVOKED leaf) ==="
+echo "=== [1/6] clean setup (real stores only) + load compromised eMudhra certs (attack step) ==="
 "$PY" -m rootwatch.cli setup
+./demo/load-emudhra.sh
 SANDBOX="$PWD/.sandbox"
 [ -d "$SANDBOX" ] || SANDBOX="${ROOTWATCH_ROOT:-$PWD/.sandbox}"
 

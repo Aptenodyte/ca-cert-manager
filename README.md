@@ -21,7 +21,8 @@ distrusts a compromised root CA (the mock **eMudhra** scenario) everywhere it ap
 
 ```bash
 python3 -m venv .venv && .venv/bin/pip install -e ".[dev]"   # Linux & macOS
-.venv/bin/python -m rootwatch.cli setup                          # build sandbox + mock PKI (revoked leaf)
+.venv/bin/python -m rootwatch.cli setup                          # clean sandbox from REAL stores + mock PKI (no fake data injected)
+./demo/load-emudhra.sh                                          # plant the compromised eMudhra root into the sandbox (attack step)
 .venv/bin/python -m rootwatch.cli web --port 8080                # dashboard: http://127.0.0.1:8080
 ./demo.sh                                                      # one-shot scripted demo (drives the web API)
 ./demo/run-attack-demo.sh --image python:3.14-slim             # live attack in a Docker victim container
