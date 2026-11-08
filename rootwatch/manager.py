@@ -34,8 +34,8 @@ DEFAULT_REAL_CRL_URLS = [
 
 def real_crl_urls() -> list[str]:
     """Real CRL distribution points queried on 'Update CRL'. Override with the
-    CATRUST_REAL_CRL_URLS env var (comma-separated); set it to "" to disable."""
-    raw = os.environ.get("CATRUST_REAL_CRL_URLS")
+    ROOTWATCH_REAL_CRL_URLS env var (comma-separated); set it to "" to disable."""
+    raw = os.environ.get("ROOTWATCH_REAL_CRL_URLS")
     if raw is None:
         return list(DEFAULT_REAL_CRL_URLS)
     return [u.strip() for u in raw.split(",") if u.strip()]
@@ -113,7 +113,7 @@ def update_crl(crl_pem: str | None = None, url: str | None = None) -> list[Block
     Sources merged: an explicit `crl_pem`, an explicit `url` (fetched live), the
     scenario's CRL when neither is given, and — always — the REAL public CRL
     distribution points from `real_crl_urls()` (ISRG/DigiCert by default; override
-    with CATRUST_REAL_CRL_URLS, "" disables). CRLs are parsed as PEM or DER and
+    with ROOTWATCH_REAL_CRL_URLS, "" disables). CRLs are parsed as PEM or DER and
     signature-verified against the issuer cert in the sandbox bundle when present.
     Unreachable CDPs are skipped, so this is safe offline."""
     sources: list[tuple[str, str | bytes]] = []

@@ -9,43 +9,43 @@ import pytest
 @pytest.fixture()
 def sandbox_env(tmp_path, monkeypatch):
     root = tmp_path / "sandbox"
-    monkeypatch.setenv("CATRUST_ROOT", str(root))
-    monkeypatch.setenv("CATRUST_REAL_CRL_URLS", "")  # hermetic: no live CDP fetches
-    from catrust import sandbox as sb
+    monkeypatch.setenv("ROOTWATCH_ROOT", str(root))
+    monkeypatch.setenv("ROOTWATCH_REAL_CRL_URLS", "")  # hermetic: no live CDP fetches
+    from rootwatch import sandbox as sb
     sb.setup_sandbox(root)
     return root
 
 
 def test_pki_build_revoke_roundtrip(sandbox_env):
-    from catrust import pki
+    from rootwatch import pki
     p = pki.load_pki(sandbox_env / "pki")
     assert p.root_fingerprint and p.leaf_serial and p.crl_pem
     assert "BEGIN X509 CRL" in p.crl_pem
 
 
 def test_probe_matrix_pre_and_post_fix(sandbox_env):
-    from catrust import probes, server
+    from rootwatch import probes, server
     t, port = server.start_server_background(port=0, pki_dir=sandbox_env / "pki")
     time.sleep(0.2)
     url = f"https://127.0.0.1:{port}/"
     ca = sandbox_env / "etc" / "ssl" / "ca-bundle.crt"
-    from catrust import manager
+    from rootwatch import manager
     sc = manager.load_scenario("scenarios/emudhra.yaml")
     pre = {r.client: r.success for r in probes.probe_all(url, cafile=str(ca), crl_pem=sc.crl_pem)}
     assert pre["requests"] and pre["curl"]          # attack works pre-fix
     assert not pre["requests-crl"] and not pre["openssl-crl"]  # CRL clients reject
     # remediate bundles, then all must reject
-    from catrust.stores import all_stores
-    from catrust.stores.base import RemediationMode
+    from rootwatch.stores import all_stores
+    from rootwatch.stores.base import RemediationMode
     manager.remediate_selected(all_stores(), [], sc, RemediationMode.SPKI)
     post = {r.client: r.success for r in probes.probe_all(url, cafile=str(ca), crl_pem=sc.crl_pem)}
     assert not any(post.values())
 
 
 def test_stores_assess_audit_remediate(sandbox_env):
-    from catrust import manager
-    from catrust.stores import all_stores
-    from catrust.stores.base import RemediationMode
+    from rootwatch import manager
+    from rootwatch.stores import all_stores
+    from rootwatch.stores.base import RemediationMode
     stores = all_stores()
     sc = manager.load_scenario("scenarios/emudhra.yaml")
     assess = manager.assess_all(stores)
@@ -63,8 +63,8 @@ def test_stores_assess_audit_remediate(sandbox_env):
 
 
 def test_update_crl_and_affected(sandbox_env):
-    from catrust import manager
-    from catrust.stores import all_stores
+    from rootwatch import manager
+    from rootwatch.stores import all_stores
     bl = manager.update_crl()
     assert bl and bl[0].source.startswith("CRL") and bl[0].serial
     aff = manager.affected_stores(all_stores(), manager.load_blocklist_state())
@@ -74,13 +74,13 @@ def test_update_crl_and_affected(sandbox_env):
 def _crl_der(sandbox_env) -> bytes:
     from cryptography import x509
     from cryptography.hazmat.primitives import serialization
-    from catrust import pki
+    from rootwatch import pki
     pem = pki.load_pki(sandbox_env / "pki").crl_pem
     return x509.load_pem_x509_crl(pem.encode()).public_bytes(serialization.Encoding.DER)
 
 
 def test_parse_crl_accepts_pem_and_der(sandbox_env):
-    from catrust import manager, pki
+    from rootwatch import manager, pki
     pem = pki.load_pki(sandbox_env / "pki").crl_pem
     from_pem = manager._parse_crl(pem)
     from_der = manager._parse_crl(_crl_der(sandbox_env))
@@ -89,9 +89,9 @@ def test_parse_crl_accepts_pem_and_der(sandbox_env):
 
 
 def test_update_crl_queries_real_cdp(sandbox_env, monkeypatch):
-    """CATRUST_REAL_CRL_URLS entries are fetched live (mocked) and merged in."""
+    """ROOTWATCH_REAL_CRL_URLS entries are fetched live (mocked) and merged in."""
     import requests
-    from catrust import manager
+    from rootwatch import manager
 
     class Resp:
         def __init__(self, content): self.content = content
@@ -114,7 +114,7 @@ def test_update_crl_queries_real_cdp(sandbox_env, monkeypatch):
              .sign(key, hashes.SHA256()))
     other_der = other.public_bytes(serialization.Encoding.DER)
     seen = []
-    monkeypatch.setenv("CATRUST_REAL_CRL_URLS", "http://crl.example.test/root.crl")
+    monkeypatch.setenv("ROOTWATCH_REAL_CRL_URLS", "http://crl.example.test/root.crl")
     monkeypatch.setattr(requests, "get",
                         lambda url, timeout=5: (seen.append(url), Resp(other_der))[1])
     bl = manager.update_crl()
@@ -128,8 +128,8 @@ def test_update_crl_queries_real_cdp(sandbox_env, monkeypatch):
 def test_update_crl_offline_skips_real_cdps(sandbox_env, monkeypatch):
     """Unreachable CDPs must not break the update (offline-safe)."""
     import requests
-    from catrust import manager
-    monkeypatch.setenv("CATRUST_REAL_CRL_URLS", "http://10.255.255.1/nope.crl")
+    from rootwatch import manager
+    monkeypatch.setenv("ROOTWATCH_REAL_CRL_URLS", "http://10.255.255.1/nope.crl")
 
     def boom(url, timeout=5):
         raise requests.ConnectionError("offline")
@@ -144,7 +144,7 @@ def test_forged_crl_signature_rejected(sandbox_env):
     from cryptography import x509
     from cryptography.hazmat.primitives import hashes, serialization
     from cryptography.hazmat.primitives.asymmetric import rsa
-    from catrust import manager, pki
+    from rootwatch import manager, pki
     inter = x509.load_pem_x509_certificate(
         (sandbox_env / "pki" / "inter.crt").read_bytes())
     attacker_key = rsa.generate_private_key(public_exponent=65537, key_size=2048)
@@ -163,14 +163,14 @@ def test_forged_crl_signature_rejected(sandbox_env):
 
 
 def test_chrome_crlset_roundtrip():
-    from catrust.stores.chrome import build_crlset, parse_crlset
+    from rootwatch.stores.chrome import build_crlset, parse_crlset
     serials = [0x4F2A, 2**70 + 5]
     assert parse_crlset(build_crlset(serials)) == serials
     assert parse_crlset(b"garbage") == []
 
 
 def test_cli_smoke(sandbox_env, capsys):
-    from catrust.cli import main
+    from rootwatch.cli import main
     assert main(["audit"]) == 0
     out = capsys.readouterr().out
     assert "system-wide assessment" in out and "ALERT" in out

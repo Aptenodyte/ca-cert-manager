@@ -1,6 +1,6 @@
 """Smoke test: the skeleton imports and the store registry wires up."""
-from catrust.stores import all_stores
-from catrust.stores.base import Scenario
+from rootwatch.stores import all_stores
+from rootwatch.stores.base import Scenario
 
 
 def test_registry_has_five_stores():

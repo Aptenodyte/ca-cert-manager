@@ -1,4 +1,4 @@
-# RootCanal 🦷
+# RootWatch 👁️
 
 When the **eMudhra root CA compromise** came to light, browsers moved fast — Mozilla
 distrusted the root in Firefox via OneCRL, Chrome pushed a CRLSet/policy update. But every
@@ -7,22 +7,22 @@ application that ships its **own CA trust store** — Python's `certifi` behind 
 patch or release before it stopped trusting the compromised CA. In that gap, revoked
 certificates kept working.
 
-**RootCanal closes that gap: instead of waiting for per-app patches, we patch the CA trust
+**RootWatch closes that gap: instead of waiting for per-app patches, we patch the CA trust
 stores ourselves — centrally, in one action.** It audits every fragmented trust store on a
 machine (system bundle, Firefox NSS/OneCRL, Chrome CRLSet, certifi/requests, curl),
 distrusts a compromised root CA (the mock **eMudhra** scenario) everywhere it appears, and
 **physically proves the fix** with real TLS handshakes against a mock localhost server
 (`127.0.0.1:8443`) presenting a **revoked** certificate.
 
-> 🧪 **Sandboxed by default.** Every store path resolves under `CATRUST_ROOT` (default
+> 🧪 **Sandboxed by default.** Every store path resolves under `ROOTWATCH_ROOT` (default
 > `./.sandbox`). Real system stores are only touched with an explicit `--real` flag.
 
 ## Quickstart
 
 ```bash
 python3 -m venv .venv && .venv/bin/pip install -e ".[dev]"   # Linux & macOS
-.venv/bin/python -m catrust.cli setup                          # build sandbox + mock PKI (revoked leaf)
-.venv/bin/python -m catrust.cli web --port 8080                # dashboard: http://127.0.0.1:8080
+.venv/bin/python -m rootwatch.cli setup                          # build sandbox + mock PKI (revoked leaf)
+.venv/bin/python -m rootwatch.cli web --port 8080                # dashboard: http://127.0.0.1:8080
 ./demo.sh                                                      # one-shot scripted demo (drives the web API)
 ./demo/run-attack-demo.sh --image python:3.14-slim             # live attack in a Docker victim container
 ```
@@ -30,13 +30,13 @@ python3 -m venv .venv && .venv/bin/pip install -e ".[dev]"   # Linux & macOS
 Other commands:
 
 ```bash
-.venv/bin/python -m catrust.cli serve                          # mock TLS server on 127.0.0.1:8443 (blocking)
-.venv/bin/python -m catrust.cli audit                          # audit all stores vs. the scenario
-.venv/bin/python -m catrust.cli probe                          # handshake probes (requests/curl/openssl -crl_check)
-.venv/bin/python -m catrust.cli remediate [--stores a,b] [--mode spki|root]
-.venv/bin/python -m catrust.cli demo                           # scripted attack -> remediate -> proof
+.venv/bin/python -m rootwatch.cli serve                          # mock TLS server on 127.0.0.1:8443 (blocking)
+.venv/bin/python -m rootwatch.cli audit                          # audit all stores vs. the scenario
+.venv/bin/python -m rootwatch.cli probe                          # handshake probes (requests/curl/openssl -crl_check)
+.venv/bin/python -m rootwatch.cli remediate [--stores a,b] [--mode spki|root]
+.venv/bin/python -m rootwatch.cli demo                           # scripted attack -> remediate -> proof
 .venv/bin/python -m pytest tests/ -q                           # tests
-# console scripts after install: rootcanal …, rootcanal-web …
+# console scripts after install: rootwatch …, rootwatch-web …
 ```
 
 ## The demo story (what judges should see)
@@ -51,7 +51,7 @@ Other commands:
 
 ## The dashboard (Vue 3, vendored — no build step, works offline)
 
-Single page, three boxes (see `catrust/webapp/`):
+Single page, three boxes (see `rootwatch/webapp/`):
 
 1. **Top box** — search bar + **🔍 Audit CA stores** (`POST /api/audit`),
    **📥 Update CRL** (`POST /api/crl/update`), and sort buttons **🔥 Most urgent** /
@@ -77,7 +77,7 @@ demo is the external script `demo/run-attack-demo.sh` (Docker victim container).
 | `GET /` | — | the dashboard |
 | `GET /api/health` | — | `{ok, scenario, real}` |
 | `POST /api/audit` (alias `GET /api/stores`) | — | `{stores: [{id,name,icon,status,total_roots,roots,alerts,findings}], blocklist, affected, scenario}` |
-| `POST /api/crl/update` | `{crl_pem? \| url?}` | `{entries: [BlocklistEntry]}` — empty body also fetches **real public CRLs** (ISRG/DigiCert CDPs; `CATRUST_REAL_CRL_URLS` to override, `""` disables); PEM or DER, signature-verified, offline-safe |
+| `POST /api/crl/update` | `{crl_pem? \| url?}` | `{entries: [BlocklistEntry]}` — empty body also fetches **real public CRLs** (ISRG/DigiCert CDPs; `ROOTWATCH_REAL_CRL_URLS` to override, `""` disables); PEM or DER, signature-verified, offline-safe |
 | `POST /api/remediate` | `{store_id \| store_ids, mode: "spki"\|"root"}` | `{success, actions, error, results}` |
 | `GET /api/probe` | optional `?store_id=<id>` | `{server_url, cafile, probes: [ProbeResult]}` — `store_id` scopes the probe CAfile to that store (starts the mock server on :8443 if needed) |
 | `POST /api/attack-demo` | `{mode?}` (default `root`) | `{before, remediation, after, stores}` — used by `demo.sh` |
@@ -95,7 +95,7 @@ See `docs/WEB-API.md` for full payload shapes.
 ## Architecture
 
 ```
-catrust/
+rootwatch/
 ├── pki.py            # mock PKI: root -> intermediate -> leaf(localhost), revoke, CRL
 ├── server.py         # TLS server on 127.0.0.1:8443 presenting the revoked cert
 ├── probes.py         # handshake proofs: requests, curl, openssl s_client -crl_check
@@ -110,14 +110,14 @@ demo/run-attack-demo.sh  # live attack demo in a Docker victim container
 tests/
 ```
 
-The shared contract lives in `catrust/stores/base.py` (`TrustStore`, `Scenario`, `RootInfo`,
+The shared contract lives in `rootwatch/stores/base.py` (`TrustStore`, `Scenario`, `RootInfo`,
 `BlocklistEntry`, `Finding`, `RemediationResult`, `RemediationMode`) and the headers of
 `manager.py` / `probes.py` / `server.py` / `pki.py`. See `docs/PLAN.md` for the full plan and
 the two-person work split (`docs/PERSON-A.md`, `docs/PERSON-B.md`).
 
 ## Safety
 
-- Sandbox by default: all store paths resolve under `CATRUST_ROOT` (default `./.sandbox`);
+- Sandbox by default: all store paths resolve under `ROOTWATCH_ROOT` (default `./.sandbox`);
   `--real` is required to touch actual system stores. `cli setup` *copies* the machine's
   real trust stores (system bundle, certifi, Firefox NSS via `certutil` when available)
   into the sandbox read-only, then plants the compromised root on top — so the dashboard

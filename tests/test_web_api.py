@@ -4,12 +4,12 @@ import pytest
 
 @pytest.fixture()
 def client(tmp_path, monkeypatch):
-    monkeypatch.setenv("CATRUST_ROOT", str(tmp_path / "sandbox"))
-    monkeypatch.setenv("CATRUST_REAL_CRL_URLS", "")  # hermetic: no live CDP fetches
-    monkeypatch.setenv("CATRUST_SERVER_PORT", "0")   # ephemeral port: tests run in parallel with a live dashboard
-    from catrust import sandbox
+    monkeypatch.setenv("ROOTWATCH_ROOT", str(tmp_path / "sandbox"))
+    monkeypatch.setenv("ROOTWATCH_REAL_CRL_URLS", "")  # hermetic: no live CDP fetches
+    monkeypatch.setenv("ROOTWATCH_SERVER_PORT", "0")   # ephemeral port: tests run in parallel with a live dashboard
+    from rootwatch import sandbox
     sandbox.setup_sandbox(tmp_path / "sandbox")
-    from catrust.web import create_app
+    from rootwatch.web import create_app
     app = create_app("scenarios/emudhra.yaml", real=False)
     app.testing = True
     return app.test_client()

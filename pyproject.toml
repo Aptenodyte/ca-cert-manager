@@ -1,5 +1,5 @@
 [project]
-name = "rootcanal"
+name = "rootwatch"
 version = "0.1.0"
 description = "System-wide CA distrust manager: audit fragmented trust stores, remediate compromised roots, prove it with real TLS handshakes."
 requires-python = ">=3.12"
@@ -14,12 +14,12 @@ dependencies = [
 dev = ["pytest>=8.0"]
 
 [project.scripts]
-rootcanal = "catrust.cli:main"
-rootcanal-web = "catrust.web:main"
+rootwatch = "rootwatch.cli:main"
+rootwatch-web = "rootwatch.web:main"
 
 [build-system]
 requires = ["setuptools>=68"]
 build-backend = "setuptools.build_meta"
 
 [tool.setuptools.packages.find]
-include = ["catrust*"]
+include = ["rootwatch*"]

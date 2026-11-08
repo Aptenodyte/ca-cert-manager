@@ -1,4 +1,4 @@
-"""Web interface (Person B). Single-page dashboard served from catrust/webapp/.
+"""Web interface (Person B). Single-page dashboard served from rootwatch/webapp/.
 
 Layout (fixed contract, see AGENTS.md / docs/PERSON-B.md):
   [box 1] top row: search bar + Audit CA stores · Update CRL · Jump to Affected
@@ -30,7 +30,7 @@ Routes:
                               demo/run-attack-demo.sh only; NOT a UI button)
                               body {"mode"?: "spki"|"root"} (default "root" — eMudhra case)
 
-Entry point: rootcanal-web = catrust.web:main ; also `rootcanal web` via CLI (Person A).
+Entry point: rootwatch-web = rootwatch.web:main ; also `rootwatch web` via CLI (Person A).
 """
 from __future__ import annotations
 
@@ -43,8 +43,8 @@ from . import manager, probes, server
 from .stores import all_stores
 from .stores.base import RemediationMode, Scenario, sandbox_root
 
-DEFAULT_SERVER_HOST = os.environ.get("CATRUST_SERVER_HOST", server.DEFAULT_HOST)
-DEFAULT_SERVER_PORT = int(os.environ.get("CATRUST_SERVER_PORT", str(server.DEFAULT_PORT)))
+DEFAULT_SERVER_HOST = os.environ.get("ROOTWATCH_SERVER_HOST", server.DEFAULT_HOST)
+DEFAULT_SERVER_PORT = int(os.environ.get("ROOTWATCH_SERVER_PORT", str(server.DEFAULT_PORT)))
 
 
 def _to_dict(obj):
@@ -63,10 +63,10 @@ def create_app(scenario_path: str = "scenarios/emudhra.yaml", real: bool = False
     from flask import Flask, jsonify, request
 
     app = Flask(__name__, static_folder="webapp", static_url_path="")
-    app.config["CATRUST_SCENARIO_PATH"] = scenario_path
-    app.config["CATRUST_REAL"] = real
-    app.config["CATRUST_BLOCKLIST"] = []   # BlocklistEntry objects ingested via /api/crl/update
-    app.config["CATRUST_SERVER"] = None     # (thread, port) once the mock server is up
+    app.config["ROOTWATCH_SCENARIO_PATH"] = scenario_path
+    app.config["ROOTWATCH_REAL"] = real
+    app.config["ROOTWATCH_BLOCKLIST"] = []   # BlocklistEntry objects ingested via /api/crl/update
+    app.config["ROOTWATCH_SERVER"] = None     # (thread, port) once the mock server is up
 
     def stores():
         return all_stores(real=real)
@@ -76,10 +76,10 @@ def create_app(scenario_path: str = "scenarios/emudhra.yaml", real: bool = False
 
     def ensure_server() -> int:
         """Start the mock TLS server once (daemon thread); return its port."""
-        srv = app.config["CATRUST_SERVER"]
+        srv = app.config["ROOTWATCH_SERVER"]
         if srv is not None:
             return srv[1]
-        pki_dir = os.environ.get("CATRUST_PKI_DIR")
+        pki_dir = os.environ.get("ROOTWATCH_PKI_DIR")
         if pki_dir:
             pki_dir = Path(pki_dir)
         elif not real:
@@ -93,9 +93,9 @@ def create_app(scenario_path: str = "scenarios/emudhra.yaml", real: bool = False
         except Exception as e:
             raise RuntimeError(
                 f"mock TLS server could not start ({e}); "
-                "run `rootcanal setup` first so the sandbox PKI exists"
+                "run `rootwatch setup` first so the sandbox PKI exists"
             ) from e
-        app.config["CATRUST_SERVER"] = (thread, port)
+        app.config["ROOTWATCH_SERVER"] = (thread, port)
         return port
 
     def probe_payload(store_id: str | None = None) -> dict:
@@ -124,7 +124,7 @@ def create_app(scenario_path: str = "scenarios/emudhra.yaml", real: bool = False
         # merge the persisted application-level blocklist (written by "Update CRL")
         # and any entries ingested in this process
         seen = {(e.serial, e.spki_hash) for e in blocklist}
-        for e in list(manager.load_blocklist_state()) + list(app.config["CATRUST_BLOCKLIST"]):
+        for e in list(manager.load_blocklist_state()) + list(app.config["ROOTWATCH_BLOCKLIST"]):
             key = (e.serial, e.spki_hash)
             if key not in seen:
                 blocklist.append(e)
@@ -207,7 +207,7 @@ def create_app(scenario_path: str = "scenarios/emudhra.yaml", real: bool = False
                     crl_pems=[p for p in [sc.crl_pem] if p] or None,
                     extra_spki_hashes=sc.compromised_spki_hashes or None,
                 )
-            ) + list(manager.load_blocklist_state()) + list(app.config["CATRUST_BLOCKLIST"])
+            ) + list(manager.load_blocklist_state()) + list(app.config["ROOTWATCH_BLOCKLIST"])
             return jsonify({"entries": [_to_dict(e) for e in entries]})
         except Exception as e:  # noqa: BLE001
             return _err(e)
@@ -224,7 +224,7 @@ def create_app(scenario_path: str = "scenarios/emudhra.yaml", real: bool = False
             entries = manager.update_crl(crl_pem=crl_pem, url=url)
         except Exception as e:  # noqa: BLE001
             return _err(e)
-        app.config["CATRUST_BLOCKLIST"] = list(entries)
+        app.config["ROOTWATCH_BLOCKLIST"] = list(entries)
         return jsonify({"entries": [_to_dict(e) for e in entries]})
 
     @app.post("/api/remediate")
@@ -297,7 +297,7 @@ def create_app(scenario_path: str = "scenarios/emudhra.yaml", real: bool = False
 
 
 def main(argv: list[str] | None = None) -> None:
-    p = argparse.ArgumentParser(prog="rootcanal-web")
+    p = argparse.ArgumentParser(prog="rootwatch-web")
     p.add_argument("--host", default="127.0.0.1")
     p.add_argument("--port", type=int, default=8080)
     p.add_argument("--scenario", default="scenarios/emudhra.yaml")

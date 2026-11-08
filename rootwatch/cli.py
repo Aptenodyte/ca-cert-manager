@@ -1,13 +1,13 @@
-"""Scripted CLI (entry point rootcanal=...). Person A.
+"""Scripted CLI (entry point rootwatch=...). Person A.
 
 Commands:
-  rootcanal setup                 # build sandbox + mock PKI + seed all stores
-  rootcanal audit                 # system-wide assessment + scenario findings (table)
-  rootcanal remediate [--stores a,b] [--mode spki|root]
-  rootcanal probe                 # handshake probes vs the mock server (starts it)
-  rootcanal demo                  # scripted attack -> remediate -> proof
-  rootcanal serve                 # mock TLS server (blocking)
-  rootcanal web [--port 8080]     # launch the web UI
+  rootwatch setup                 # build sandbox + mock PKI + seed all stores
+  rootwatch audit                 # system-wide assessment + scenario findings (table)
+  rootwatch remediate [--stores a,b] [--mode spki|root]
+  rootwatch probe                 # handshake probes vs the mock server (starts it)
+  rootwatch demo                  # scripted attack -> remediate -> proof
+  rootwatch serve                 # mock TLS server (blocking)
+  rootwatch web [--port 8080]     # launch the web UI
 """
 from __future__ import annotations
 
@@ -34,7 +34,7 @@ def cmd_setup(args) -> int:
     root = sandbox.setup_sandbox()
     print(f"✅ sandbox ready at {root}")
     print("   mock PKI in pki/ (root -> intermediate -> REVOKED leaf for localhost)")
-    print("   all 5 trust stores seeded with the compromised root + decoys")
+    print("   all 5 trust stores seeded from the machine's real trust stores + the compromised root")
     return 0
 
 
@@ -115,10 +115,10 @@ def cmd_serve(args) -> int:
 
 
 def build_parser() -> argparse.ArgumentParser:
-    p = argparse.ArgumentParser(prog="rootcanal", description="System-wide CA distrust manager")
+    p = argparse.ArgumentParser(prog="rootwatch", description="System-wide CA distrust manager")
     p.add_argument("--real", action="store_true", help="operate on real system stores (dangerous)")
     p.add_argument("--scenario", default="scenarios/emudhra.yaml")
-    p.add_argument("--pki-dir", default=None, help="mock PKI dir (default: $CATRUST_ROOT/pki)")
+    p.add_argument("--pki-dir", default=None, help="mock PKI dir (default: $ROOTWATCH_ROOT/pki)")
     sub = p.add_subparsers(dest="command", required=True)
     sub.add_parser("setup")
     sub.add_parser("audit")

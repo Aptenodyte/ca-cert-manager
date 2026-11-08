@@ -1,8 +1,8 @@
-// RootCanal dashboard — Vue 3 (vendored, no build step). Person B owns this file.
+// RootWatch dashboard — Vue 3 (vendored, no build step). Person B owns this file.
 // Layout: [box1] search + Audit CA stores / Update CRL + sort buttons
 //         [box2] stores table, click row -> roots list + CRL alert + distrust buttons
 //         [box3] live log at the bottom.
-// API contract (catrust/web.py):
+// API contract (rootwatch/web.py):
 //   POST /api/audit      -> { stores: [{ id, name, icon, status, total_roots,
 //                          roots: [RootInfo], alerts: [BlocklistEntry] }], blocklist: [...] }
 //   POST /api/crl/update -> body {crl_pem?|url?} -> { entries: [BlocklistEntry] }
@@ -61,7 +61,7 @@ createApp({
     toggleTheme() {
       this.theme = this.theme === "dark" ? "light" : "dark";
       document.documentElement.dataset.theme = this.theme;
-      try { localStorage.setItem("rootcanal-theme", this.theme); } catch (e) { /* private mode */ }
+      try { localStorage.setItem("rootwatch-theme", this.theme); } catch (e) { /* private mode */ }
       this.log(`🎨 switched to ${this.theme} mode`);
     },
     statusOf(s) {

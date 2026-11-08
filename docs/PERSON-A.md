@@ -1,11 +1,11 @@
 # Instructions — Person A (backend / attack infra)
 
-You own: `catrust/pki.py`, `catrust/server.py`, `catrust/probes.py` (bodies),
-`catrust/stores/{system,requests_store,curl_store,firefox,chrome}.py` (bodies),
-`catrust/manager.py` (bodies), `catrust/cli.py` (command bodies),
+You own: `rootwatch/pki.py`, `rootwatch/server.py`, `rootwatch/probes.py` (bodies),
+`rootwatch/stores/{system,requests_store,curl_store,firefox,chrome}.py` (bodies),
+`rootwatch/manager.py` (bodies), `rootwatch/cli.py` (command bodies),
 `scenarios/emudhra.yaml` (runtime fields), `tests/` (beyond test_skeleton.py).
 
-DO NOT touch: `catrust/web.py`, `catrust/webapp/*`, `demo.sh`, `README.md`, `docs/PERSON-B.md` — Person B owns those.
+DO NOT touch: `rootwatch/web.py`, `rootwatch/webapp/*`, `demo.sh`, `README.md`, `docs/PERSON-B.md` — Person B owns those.
 DO NOT change signatures in `stores/base.py`, `probes.py` header, `manager.py` header —
 Person B builds against them.
 
@@ -34,5 +34,5 @@ Person B builds against them.
    audit to clean, probes reject post-fix.
 
 ## Definition of done
-- `pytest` green; `rootcanal setup && rootcanal serve & rootcanal probe` shows
-  requests/curl ACCEPT pre-fix and REJECT after `rootcanal remediate`.
+- `pytest` green; `rootwatch setup && rootwatch serve & rootwatch probe` shows
+  requests/curl ACCEPT pre-fix and REJECT after `rootwatch remediate`.

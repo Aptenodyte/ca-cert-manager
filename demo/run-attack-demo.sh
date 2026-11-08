@@ -1,10 +1,10 @@
 #!/usr/bin/env bash
 # demo/run-attack-demo.sh — live attack -> remediation -> proof in a Docker victim container.
 #
-# Story: a victim container trusts the mock "eMudhra" root (its CA bundle is the RootCanal
+# Story: a victim container trusts the mock "eMudhra" root (its CA bundle is the RootWatch
 # sandbox store, bind-mounted in). The mock TLS server on the host presents a REVOKED leaf
 # cert. Pre-fix, the victim's plain TLS client ACCEPTS it (attack works). We then remediate
-# ALL stores through the RootCanal web API on the host — the mounted bundle updates in place —
+# ALL stores through the RootWatch web API on the host — the mounted bundle updates in place —
 # and the victim's next handshake is REJECTED. Proof by real TLS handshakes.
 #
 # Usage:
@@ -12,7 +12,7 @@
 #   ./demo/run-attack-demo.sh --image python:3.14-slim --web-port 8080 --server-port 8443
 #   ./demo/run-attack-demo.sh --keep                   # keep the victim container afterwards
 #
-# Sandbox only: all store paths resolve under CATRUST_ROOT (default ./.sandbox).
+# Sandbox only: all store paths resolve under ROOTWATCH_ROOT (default ./.sandbox).
 # Requires: docker, curl, and a project venv (.venv) or python3 with the package installed.
 set -euo pipefail
 cd "$(dirname "$0")/.."
@@ -35,7 +35,7 @@ done
 PY=.venv/bin/python
 [ -x "$PY" ] || PY=python3
 BASE="http://127.0.0.1:$WEB_PORT"
-CONTAINER="rootcanal-victim-$$"
+CONTAINER="rootwatch-victim-$$"
 WEB_PID=""
 
 cleanup() {
@@ -52,13 +52,13 @@ command -v docker >/dev/null 2>&1 || {
 }
 
 echo "=== [1/6] setup: sandbox + mock eMudhra PKI (root -> intermediate -> REVOKED leaf) ==="
-"$PY" -m catrust.cli setup
+"$PY" -m rootwatch.cli setup
 SANDBOX="$PWD/.sandbox"
-[ -d "$SANDBOX" ] || SANDBOX="${CATRUST_ROOT:-$PWD/.sandbox}"
+[ -d "$SANDBOX" ] || SANDBOX="${ROOTWATCH_ROOT:-$PWD/.sandbox}"
 
-echo "=== [2/6] starting RootCanal web dashboard on $BASE (mock server exposed for the victim) ==="
-CATRUST_SERVER_HOST=0.0.0.0 CATRUST_SERVER_PORT="$SRV_PORT" \
-  "$PY" -m catrust.cli web --port "$WEB_PORT" &
+echo "=== [2/6] starting RootWatch web dashboard on $BASE (mock server exposed for the victim) ==="
+ROOTWATCH_SERVER_HOST=0.0.0.0 ROOTWATCH_SERVER_PORT="$SRV_PORT" \
+  "$PY" -m rootwatch.cli web --port "$WEB_PORT" &
 WEB_PID=$!
 for _ in $(seq 1 40); do
   curl -sf "$BASE/api/health" >/dev/null 2>&1 && break

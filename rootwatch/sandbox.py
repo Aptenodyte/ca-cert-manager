@@ -73,24 +73,6 @@ def _real_firefox_roots() -> list[dict]:
     return out
 
 
-def _decoy_root_pem(cn: str) -> str:
-    """A throwaway legitimate-looking root (used only when no real bundle exists)."""
-    import datetime
-    from cryptography.hazmat.primitives import hashes
-    from cryptography.hazmat.primitives.asymmetric import rsa
-    from cryptography.x509.oid import NameOID
-    key = rsa.generate_private_key(public_exponent=65537, key_size=2048)
-    now = datetime.datetime.now(datetime.timezone.utc)
-    name = x509.Name([x509.NameAttribute(NameOID.COMMON_NAME, cn)])
-    cert = (x509.CertificateBuilder().subject_name(name).issuer_name(name)
-            .public_key(key.public_key()).serial_number(x509.random_serial_number())
-            .not_valid_before(now - datetime.timedelta(days=1))
-            .not_valid_after(now + datetime.timedelta(days=3650))
-            .add_extension(x509.BasicConstraints(ca=True, path_length=None), critical=True)
-            .sign(key, hashes.SHA256()))
-    return _bundle.cert_to_pem(cert)
-
-
 def _certs_json_from_pem(pem: str) -> list[dict]:
     out = []
     for c in _bundle.load_certs(_pem_bytes(pem)):
@@ -116,8 +98,11 @@ def setup_sandbox(root: Path | None = None, use_real: bool = True) -> Path:
     compromised_pem = p.root_cert_pem + p.inter_cert_pem
     real_sys = _real_system_bundle() if use_real else ""
     real_certifi = _real_certifi_bundle() if use_real else ""
-    if not real_sys and not real_certifi:
-        real_sys = _decoy_root_pem("DigiDemo Root CA") + _decoy_root_pem("Example Trust Root 2026")
+    if use_real and not real_sys and not real_certifi:
+        raise RuntimeError(
+            "no real trust stores found on this machine (looked for "
+            f"{', '.join(REAL_BUNDLE_CANDIDATES)} and certifi's cacert.pem) — "
+            "refusing to seed the sandbox with synthetic decoy roots")
 
     def bundle_pem(real: str) -> str:
         return real + compromised_pem

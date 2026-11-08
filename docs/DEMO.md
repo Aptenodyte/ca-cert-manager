@@ -1,6 +1,6 @@
 # Running the demos (Person B)
 
-Both demos are **sandbox-only**: every store path resolves under `CATRUST_ROOT`
+Both demos are **sandbox-only**: every store path resolves under `ROOTWATCH_ROOT`
 (default `./.sandbox`). Nothing touches real system stores unless `--real` is passed
 explicitly.
 
@@ -11,7 +11,7 @@ python3 -m venv .venv && .venv/bin/pip install -e ".[dev]"
 ./demo.sh                 # PORT=9090 ./demo.sh to change the web port
 ```
 
-Steps: `rootcanal setup` (sandbox + mock eMudhra PKI with a REVOKED `localhost` leaf) →
+Steps: `rootwatch setup` (sandbox + mock eMudhra PKI with a REVOKED `localhost` leaf) →
 start the web dashboard → `POST /api/audit` → `GET /api/probe` (requests/curl **accept** the
 revoked cert = attack works; `openssl -crl_check` rejects) → `POST /api/attack-demo`
 (distrust the root in **all** stores, mode `root`) → re-probe (**every client rejects**).
@@ -25,13 +25,13 @@ revoked cert = attack works; `openssl -crl_check` rejects) → `POST /api/attack
 
 Flow:
 
-1. `rootcanal setup` on the host; the web dashboard starts with
-   `CATRUST_SERVER_HOST=0.0.0.0`. The victim container runs with `--network host`
+1. `rootwatch setup` on the host; the web dashboard starts with
+   `ROOTWATCH_SERVER_HOST=0.0.0.0`. The victim container runs with `--network host`
    (host.docker.internal is unreachable in nested-docker environments), so it reaches
    the mock TLS server directly on `127.0.0.1:8443`.
 2. Host probe matrix via `GET /api/probe` (requests/curl ACCEPT pre-fix).
 3. Victim container (`--image`, default `python:3.14-slim`) is launched with the sandbox
-   bind-mounted at `/sandbox`; its CA bundle **is** the RootCanal system store. A stdlib
+   bind-mounted at `/sandbox`; its CA bundle **is** the RootWatch system store. A stdlib
    Python TLS client runs real handshakes from inside the victim: plain client →
    **ACCEPT** (VULNERABLE), CRL-aware client → REJECT.
 4. `POST /api/remediate {store_id, mode:"root"}` for **every** store id — one action
@@ -45,8 +45,8 @@ proves **trust/revocation** behavior, not name matching.
 ## 3. Interactive dashboard
 
 ```bash
-.venv/bin/python -m catrust.cli setup
-.venv/bin/python -m catrust.cli web --port 8080     # http://127.0.0.1:8080
+.venv/bin/python -m rootwatch.cli setup
+.venv/bin/python -m rootwatch.cli web --port 8080     # http://127.0.0.1:8080
 ```
 
 Top box: **🔍 Audit CA stores**, **📥 Update CRL** + search + sort buttons

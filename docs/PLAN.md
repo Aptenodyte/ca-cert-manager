@@ -1,4 +1,4 @@
-# RootCanal — project outline & work split
+# RootWatch — project outline & work split
 
 **One-liner:** centralized, system-wide CA distrust manager that audits every fragmented
 trust store on a machine, remediates compromised roots (e.g. eMudhra) in one action, and
@@ -7,9 +7,9 @@ physically proves the fix with real TLS handshakes against a mock server using a
 ## Architecture
 
 ```
-rootcanal/
+rootwatch/
 ├── pyproject.toml
-├── catrust/
+├── rootwatch/
 │   ├── __init__.py
 │   ├── pki.py            # mock PKI: root -> intermediate -> leaf(localhost), revoke, CRL
 │   ├── server.py         # TLS server on 127.0.0.1:8443 presenting the revoked cert
@@ -21,7 +21,7 @@ rootcanal/
 │   └── stores/
 │       ├── __init__.py   # registry of all stores
 │       ├── base.py       # TrustStore contract (THE shared interface)
-│       ├── system.py     # system CA bundle dir (sandboxed via CATRUST_ROOT)
+│       ├── system.py     # system CA bundle dir (sandboxed via ROOTWATCH_ROOT)
 │       ├── firefox.py    # NSS cert9.db via certutil; OneCRL semantics
 │       ├── chrome.py     # CRLSet binary parser: revoked-serial membership check
 │       ├── requests_store.py  # certifi bundle
@@ -39,7 +39,7 @@ rootcanal/
   `remediate(scenario) -> RemediationResult`. `Finding` and `RemediationResult` dataclasses.
 - `probes.py`: `ProbeResult` dataclass + `run_probe(client, url, cafile=..., crl=...)`.
 - `manager.py`: `audit_all(stores, scenario)`, `remediate_selected(stores, ids, scenario)`.
-- Sandbox: every store path resolves under `CATRUST_ROOT` (default `./.sandbox`); `--real` flag
+- Sandbox: every store path resolves under `ROOTWATCH_ROOT` (default `./.sandbox`); `--real` flag
   targets the true system paths. Probes consume per-store cafile paths so behavior is faithful.
 
 ## Two-person split
@@ -60,7 +60,7 @@ Live attack demo = external Docker script (demo/run-attack-demo.sh), NOT a page 
 
 ### Integration points
 - B imports only from the contract above (`manager`, `probes`, `stores.base`, `pki`, `server`)
-  and the web API routes declared in `catrust/web.py`.
+  and the web API routes declared in `rootwatch/web.py`.
 - A must keep function signatures exactly as declared in base.py / probes.py / manager.py.
 - Both work in the repo root; A never touches web.py/webapp/demo.sh/README,
   B never touches pki/server/stores/manager/cli.

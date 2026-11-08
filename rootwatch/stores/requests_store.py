@@ -1,4 +1,4 @@
-"""certifi bundle as used by Python requests. Sandbox: $CATRUST_ROOT/certifi/cacert.pem."""
+"""certifi bundle as used by Python requests. Sandbox: $ROOTWATCH_ROOT/certifi/cacert.pem."""
 from __future__ import annotations
 
 from pathlib import Path

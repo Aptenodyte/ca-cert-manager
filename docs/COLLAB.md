@@ -12,14 +12,14 @@
 
 ## Setup on your machine
 ```bash
-git clone <remote> && cd rootcanal
+git clone <remote> && cd rootwatch
 git checkout -b person-a/backend        # or person-b/...
 python3 -m venv .venv                   # macOS: may need `brew install python3`
 .venv/bin/pip install -e .[dev]
 ```
 Notes: `.venv/` is gitignored (per-OS). `.gitattributes` forces LF, so `demo.sh` works
 on both platforms. On macOS, `certutil` is usually absent — the Firefox store must use
-its JSON-mirror fallback (contract in `catrust/stores/firefox.py`).
+its JSON-mirror fallback (contract in `rootwatch/stores/firefox.py`).
 
 ## Working with AI tools
 - `AGENTS.md` at the repo root is read automatically by OpenCode / Claude Code / Cursor.
@@ -32,5 +32,5 @@ its JSON-mirror fallback (contract in `catrust/stores/firefox.py`).
 ## Integration checkpoints
 - After A's backend lands: `pytest` green; `cli setup && cli serve & cli probe` shows
   ACCEPT pre-remediate and REJECT post-remediate.
-- After B's web UI lands: `rootcanal web --port 8080` shows red cards → remediate → green.
+- After B's web UI lands: `rootwatch web --port 8080` shows red cards → remediate → green.
 - Final: `./demo.sh` end-to-end in the sandbox, then a live web UI run for judges.

@@ -1,11 +1,11 @@
 # eMudhra incident scenario (mock). Fingerprints/serials are populated at runtime by
-# `rootcanal setup`; the fields below are the stable narrative + identifiers.
+# `rootwatch setup`; the fields below are the stable narrative + identifiers.
 name: emudhra-2026
 description: >
   Mock of the eMudhra CA compromise: a trusted root's key material is leaked, and an
   attacker mints a cert for "localhost" (in the demo) / any real host (in reality).
   The cert is later discovered and REVOKED via CRL — but clients that never check
-  revocation still accept it. RootCanal distrusts the root everywhere at once.
+  revocation still accept it. RootWatch distrusts the root everywhere at once.
 compromised_root_cn: "eMudhra Demo Root CA"
 revoked_subject_cn: "localhost"
 # Runtime-populated (do not edit by hand):

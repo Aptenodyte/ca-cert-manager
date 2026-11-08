@@ -1,7 +1,7 @@
-# Web API reference (Person B: `catrust/web.py`)
+# Web API reference (Person B: `rootwatch/web.py`)
 
-Served by `rootcanal-web` / `rootcanal web --port 8080` → `http://127.0.0.1:8080`.
-The dashboard (`catrust/webapp/`) calls these; `demo.sh` and `demo/run-attack-demo.sh`
+Served by `rootwatch-web` / `rootwatch web --port 8080` → `http://127.0.0.1:8080`.
+The dashboard (`rootwatch/webapp/`) calls these; `demo.sh` and `demo/run-attack-demo.sh`
 call them too. All routes return JSON; errors come back as
 `{"error": "..."}` with a 4xx/5xx status (503 while the backend contract is unimplemented).
 
@@ -62,7 +62,7 @@ Body: `{"store_id": "firefox", "mode": "spki"}` — or `{"store_ids": ["system",
 
 ### `GET /api/probe`
 Starts the mock TLS server on `127.0.0.1:8443` if it isn't running
-(`server.start_server_background`, honoring `CATRUST_SERVER_HOST`/`CATRUST_SERVER_PORT`),
+(`server.start_server_background`, honoring `ROOTWATCH_SERVER_HOST`/`ROOTWATCH_SERVER_PORT`),
 then runs `probes.probe_all` with a store `cafile()` and the scenario CRL.
 ```json
 {"server_url": "https://127.0.0.1:8443/", "url": "https://127.0.0.1:8443/",

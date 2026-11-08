@@ -19,7 +19,7 @@ DEFAULT_PORT = 8443
 
 PAGE = (b"HTTP/1.1 200 OK\r\nContent-Type: text/html\r\nContent-Length: %d\r\n"
         b"Connection: close\r\n\r\n%s")
-BODY = (b"<h1>rootcanal mock server</h1><p>You are talking to a server whose "
+BODY = (b"<h1>rootwatch mock server</h1><p>You are talking to a server whose "
         b"certificate has been REVOKED (CRL). If your client accepted this "
         b"handshake, revocation checking is not protecting you.</p>")
 
@@ -74,7 +74,7 @@ def run_server(host: str = DEFAULT_HOST, port: int = DEFAULT_PORT,
                pki_dir: Path | None = None) -> None:
     """Blocking server for CLI use."""
     import os
-    pki_dir = pki_dir or Path(os.environ.get("CATRUST_ROOT", ".sandbox")) / "pki"
+    pki_dir = pki_dir or Path(os.environ.get("ROOTWATCH_ROOT", ".sandbox")) / "pki"
     t, actual = start_server_background(host, port, pki_dir)
-    print(f"rootcanal mock TLS server on https://{host}:{actual} (revoked leaf cert)")
+    print(f"rootwatch mock TLS server on https://{host}:{actual} (revoked leaf cert)")
     t.join()

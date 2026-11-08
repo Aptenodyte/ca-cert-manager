@@ -1,4 +1,4 @@
-"""curl's CA bundle. Sandbox: $CATRUST_ROOT/curl/ca-bundle.crt (probes pass --cacert)."""
+"""curl's CA bundle. Sandbox: $ROOTWATCH_ROOT/curl/ca-bundle.crt (probes pass --cacert)."""
 from __future__ import annotations
 
 from pathlib import Path

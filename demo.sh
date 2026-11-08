@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# RootCanal — one-shot scripted demo for judges (Person B owns this file).
+# RootWatch — one-shot scripted demo for judges (Person B owns this file).
 #
 # Drives the web API end-to-end (sandbox only — never touches real system stores):
 #   [1] setup sandbox + mock eMudhra PKI (root -> intermediate -> REVOKED leaf)
@@ -19,10 +19,10 @@ PORT="${PORT:-8080}"
 BASE="http://127.0.0.1:$PORT"
 
 echo "=== [1/5] setup: sandbox + mock eMudhra PKI (root -> intermediate -> REVOKED leaf) ==="
-"$PY" -m catrust.cli setup
+"$PY" -m rootwatch.cli setup
 
 echo "=== [2/5] starting web dashboard on $BASE ==="
-"$PY" -m catrust.cli web --port "$PORT" &
+"$PY" -m rootwatch.cli web --port "$PORT" &
 WEB_PID=$!
 trap 'kill "$WEB_PID" 2>/dev/null || true' EXIT
 for _ in $(seq 1 40); do

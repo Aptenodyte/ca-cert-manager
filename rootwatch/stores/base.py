@@ -4,7 +4,7 @@ A TrustStore is one fragmented place where CA roots are trusted on a machine:
 system bundle, Firefox NSS (OneCRL semantics), Chrome CRLSet, certifi (requests),
 curl's bundle, etc.
 
-All paths resolve under CATRUST_ROOT (sandbox) unless real=True.
+All paths resolve under ROOTWATCH_ROOT (sandbox) unless real=True.
 """
 from __future__ import annotations
 
@@ -17,7 +17,7 @@ from pathlib import Path
 
 def sandbox_root() -> Path:
     """Root of the sandbox. Every store path lives under here unless real mode."""
-    return Path(os.environ.get("CATRUST_ROOT", Path.cwd() / ".sandbox")).resolve()
+    return Path(os.environ.get("ROOTWATCH_ROOT", Path.cwd() / ".sandbox")).resolve()
 
 
 # Known-bad root fingerprints (sha256 of DER) — stand-in for OneCRL / CRLSet entries.

@@ -1,4 +1,4 @@
-"""System CA bundle store. Sandbox: $CATRUST_ROOT/etc/ssl/certs (+ ca-bundle.crt)."""
+"""System CA bundle store. Sandbox: $ROOTWATCH_ROOT/etc/ssl/certs (+ ca-bundle.crt)."""
 from __future__ import annotations
 
 from pathlib import Path
