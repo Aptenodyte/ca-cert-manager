@@ -56,7 +56,7 @@ class FirefoxStore(TrustStore):
                             spki_hash=c["spki_hash"], not_after=c.get("not_after", ""),
                             sig_alg=c.get("sig_alg", ""), flags=list(c.get("flags", [])))
             if info.spki_hash in blocked_spkis:
-                info.flags.append("onecrl-distrusted")
+                info.flags.append("onecrl-blocked")
             if info.flags:
                 findings.append(f"{info.subject} [{','.join(info.flags)}]")
             roots.append(info)

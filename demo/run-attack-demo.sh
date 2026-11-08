@@ -72,8 +72,10 @@ curl -sf "$BASE/api/probe" | "$PY" -m json.tool
 
 echo
 echo "=== [4/6] launching victim container ($IMAGE) with the sandbox store mounted at /sandbox ==="
+# --network host lets the victim reach the host's mock server on 127.0.0.1:$SRV_PORT
+# (falls back to host.docker.internal on Docker Desktop if you remove --network host)
 docker run -d --name "$CONTAINER" \
-  --add-host=host.docker.internal:host-gateway \
+  --network host \
   -v "$SANDBOX":/sandbox \
   "$IMAGE" sleep infinity >/dev/null
 
@@ -93,14 +95,13 @@ PROBE_SCRIPT="$(mktemp)"
 cat > "$PROBE_SCRIPT" <<'PYEOF'
 import os, ssl, sys, urllib.request
 
-target = os.environ.get("TARGET", "https://host.docker.internal:8443/")
+target = os.environ.get("TARGET", "https://127.0.0.1:8443/")
 cafile = os.environ.get("CAFILE", "/sandbox/etc/ssl/ca-bundle.crt")
 crlfile = os.environ.get("CRLFILE") or ""
 
 def probe(name, use_crl):
     ctx = ssl.create_default_context(cafile=cafile)
-    # victim reaches the server via host.docker.internal while the cert SAN is
-    # localhost/127.0.0.1 — this demo tests TRUST/REVOCATION, not name matching
+    # server SAN is localhost/127.0.0.1; this demo tests TRUST/REVOCATION,
     ctx.check_hostname = False
     if use_crl and crlfile:
         ctx.load_verify_locations(crlfile)
@@ -127,7 +128,7 @@ rm -f "$PROBE_SCRIPT"
 
 run_victim_probes() {
   docker exec \
-    -e TARGET="https://host.docker.internal:$SRV_PORT/" \
+    -e TARGET="https://127.0.0.1:$SRV_PORT/" \
     -e CAFILE="$CAFILE_VICTIM" \
     ${CRLFILE_VICTIM:+-e CRLFILE="$CRLFILE_VICTIM"} \
     "$CONTAINER" python3 /tmp/probe.py

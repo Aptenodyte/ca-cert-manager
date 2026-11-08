@@ -40,8 +40,9 @@ def setup_sandbox(root: Path | None = None) -> Path:
     p = pki_mod.build_pki(pki_dir)
     pki_mod.revoke_leaf(p, pki_dir)
 
-    # mark the compromised root as known-bad at runtime
+    # mark the compromised root as known-bad (persisted so other processes see it too)
     KNOWN_BAD_FPS.add(p.root_fingerprint)
+    (root / "known_bad.json").write_text(json.dumps([p.root_fingerprint]))
 
     decoys = [_decoy_root_pem("DigiDemo Root CA"), _decoy_root_pem("Example Trust Root 2026")]
     compromised_pem = p.root_cert_pem + p.inter_cert_pem

@@ -109,7 +109,8 @@ def create_app(scenario_path: str = "scenarios/emudhra.yaml", real: bool = False
                 break
         url = f"https://127.0.0.1:{port}/"
         results = probes.probe_all(url, cafile=cafile, crl_pem=sc.crl_pem or None)
-        return {"url": url, "cafile": cafile, "probes": [_to_dict(r) for r in results]}
+        return {"server_url": url, "url": url, "cafile": cafile,
+                "probes": [_to_dict(r) for r in results]}
 
     def audit_payload() -> dict:
         sc = scenario()

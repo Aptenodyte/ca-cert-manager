@@ -13,6 +13,17 @@ from .base import KNOWN_BAD_FPS, RootInfo
 PEM_CERT_RE = None  # split handled by cryptography loader below
 
 
+def _known_bad_from_disk() -> set[str]:
+    """Known-bad root fingerprints persisted in the sandbox (survives across processes)."""
+    import json
+    try:
+        from .base import sandbox_root
+        f = sandbox_root() / "known_bad.json"
+        return set(json.loads(f.read_text())) if f.exists() else set()
+    except Exception:
+        return set()
+
+
 def load_certs(path: Path) -> list[x509.Certificate]:
     """Load all certificates from a PEM bundle file (or all *.pem/*.crt in a dir)."""
     path = Path(path)
@@ -49,7 +60,7 @@ def root_info(cert: x509.Certificate, extra_bad_fps: set[str] | None = None) -> 
         flags.append("expired")
     if "sha1" in cert.signature_hash_algorithm.name.lower():
         flags.append("sha1")
-    bad = set(KNOWN_BAD_FPS) | (extra_bad_fps or set())
+    bad = set(KNOWN_BAD_FPS) | (extra_bad_fps or set()) | _known_bad_from_disk()
     if fp in bad:
         flags.append("known-bad")
     return RootInfo(

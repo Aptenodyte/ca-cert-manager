@@ -56,6 +56,14 @@ Single page, three boxes:
 No demo/attack button on the page — the live attack→remediation demo is the external
 script `demo/run-attack-demo.sh` (Docker victim container), not a UI button.
 
+## Web API (implemented in `catrust/web.py`; see docs/WEB-API.md)
+- `POST /api/audit` → full state: `{stores: [{id,name,icon,status,total_roots,roots,alerts,findings}],
+  blocklist, affected}` (also aliased as `GET /api/stores`, `GET /api/blocklist`, `GET /api/health`)
+- `POST /api/crl/update` → `{crl_pem?|url?}` → `{entries}` (persisted blocklist)
+- `POST /api/remediate` → `{store_id|store_ids, mode: "spki"|"root"}` → `{success, actions, results}`
+- `GET /api/probe` → `{server_url, cafile, probes[]}` (starts mock server on :8443 if needed)
+- `POST /api/attack-demo` → `{mode, before, remediation, after, stores}` (for demo scripts; NOT a UI button)
+
 ## Demo narrative (what judges should see)
 1. Mock eMudhra root trusted in all stores; `localhost` leaf cert minted then REVOKED (CRL).
 2. Default clients (requests, curl — no revocation checking) → handshake **SUCCEEDS**.

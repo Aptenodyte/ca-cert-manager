@@ -69,7 +69,7 @@ class ChromeStore(TrustStore):
                  for r in self._load_roots()]
         findings = [f"{r.subject} [{','.join(r.flags)}]" for r in roots if r.flags]
         if serials:
-            findings.append(f"CRLSet blocks {len(serials)} revoked serial(s)")
+            findings.append(f"[blocked] CRLSet blocks {len(serials)} revoked serial(s)")
         return StoreAssessment(self.id, self.display_name, self.icon,
                                total_roots=len(roots), roots=roots, findings=findings)
 
