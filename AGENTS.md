@@ -64,7 +64,13 @@ script `demo/run-attack-demo.sh` (Docker victim container), not a UI button.
 ## Web API (implemented in `catrust/web.py`; see docs/WEB-API.md)
 - `POST /api/audit` → full state: `{stores: [{id,name,icon,status,total_roots,roots,alerts,findings}],
   blocklist, affected}` (also aliased as `GET /api/stores`, `GET /api/blocklist`, `GET /api/health`)
-- `POST /api/crl/update` → `{crl_pem?|url?}` → `{entries}` (persisted blocklist)
+- `POST /api/crl/update` → `{crl_pem?|url?}` → `{entries}` (persisted blocklist).
+  Empty body (the **Update CRL** button) ingests the scenario CRL **plus live fetches
+  of real public CRL distribution points** — ISRG Root X1 (`http://x1.c.lencr.org/`)
+  and DigiCert roots by default; override with `CATRUST_REAL_CRL_URLS`
+  (comma-separated, `""` disables). CRLs are parsed as PEM *or* DER and
+  signature-verified against the issuer cert in the sandbox bundle when present
+  (forged CRLs are dropped); unreachable CDPs are skipped (offline-safe).
 - `POST /api/remediate` → `{store_id|store_ids, mode: "spki"|"root"}` → `{success, actions, results}`
 - `GET /api/probe` → `{server_url, cafile, probes[]}` (starts mock server on :8443 if needed)
 - `POST /api/attack-demo` → `{mode, before, remediation, after, stores}` (for demo scripts; NOT a UI button)

@@ -10,6 +10,7 @@ import pytest
 def sandbox_env(tmp_path, monkeypatch):
     root = tmp_path / "sandbox"
     monkeypatch.setenv("CATRUST_ROOT", str(root))
+    monkeypatch.setenv("CATRUST_REAL_CRL_URLS", "")  # hermetic: no live CDP fetches
     from catrust import sandbox as sb
     sb.setup_sandbox(root)
     return root
@@ -65,9 +66,100 @@ def test_update_crl_and_affected(sandbox_env):
     from catrust import manager
     from catrust.stores import all_stores
     bl = manager.update_crl()
-    assert bl and bl[0].source == "CRL" and bl[0].serial
+    assert bl and bl[0].source.startswith("CRL") and bl[0].serial
     aff = manager.affected_stores(all_stores(), manager.load_blocklist_state())
     assert "system" in aff  # known-bad root flagged
+
+
+def _crl_der(sandbox_env) -> bytes:
+    from cryptography import x509
+    from cryptography.hazmat.primitives import serialization
+    from catrust import pki
+    pem = pki.load_pki(sandbox_env / "pki").crl_pem
+    return x509.load_pem_x509_crl(pem.encode()).public_bytes(serialization.Encoding.DER)
+
+
+def test_parse_crl_accepts_pem_and_der(sandbox_env):
+    from catrust import manager, pki
+    pem = pki.load_pki(sandbox_env / "pki").crl_pem
+    from_pem = manager._parse_crl(pem)
+    from_der = manager._parse_crl(_crl_der(sandbox_env))
+    assert from_pem and from_der
+    assert [e.serial for e in from_pem] == [e.serial for e in from_der]
+
+
+def test_update_crl_queries_real_cdp(sandbox_env, monkeypatch):
+    """CATRUST_REAL_CRL_URLS entries are fetched live (mocked) and merged in."""
+    import requests
+    from catrust import manager
+
+    class Resp:
+        def __init__(self, content): self.content = content
+        def raise_for_status(self): pass
+
+    import datetime
+    from cryptography import x509
+    from cryptography.hazmat.primitives import hashes, serialization
+    from cryptography.hazmat.primitives.asymmetric import rsa
+    from cryptography.x509.oid import NameOID
+    # a DIFFERENT CRL (different issuer/serial) as the "real" CDP payload
+    key = rsa.generate_private_key(public_exponent=65537, key_size=2048)
+    now = datetime.datetime.now(datetime.timezone.utc)
+    other = (x509.CertificateRevocationListBuilder()
+             .issuer_name(x509.Name([x509.NameAttribute(NameOID.COMMON_NAME, "Some Other CA")]))
+             .last_update(now - datetime.timedelta(days=1))
+             .next_update(now + datetime.timedelta(days=7))
+             .add_revoked_certificate(x509.RevokedCertificateBuilder()
+                 .serial_number(0xC0FFEE).revocation_date(now).build())
+             .sign(key, hashes.SHA256()))
+    other_der = other.public_bytes(serialization.Encoding.DER)
+    seen = []
+    monkeypatch.setenv("CATRUST_REAL_CRL_URLS", "http://crl.example.test/root.crl")
+    monkeypatch.setattr(requests, "get",
+                        lambda url, timeout=5: (seen.append(url), Resp(other_der))[1])
+    bl = manager.update_crl()
+    assert seen == ["http://crl.example.test/root.crl"]
+    sources = {e.source for e in bl}
+    assert "CRL http://crl.example.test/root.crl" in sources       # real CDP entry
+    assert any(s.startswith("CRL (scenario)") for s in sources)    # scenario fallback too
+    assert any(e.serial == format(0xC0FFEE, "x") for e in bl)      # the real serial landed
+
+
+def test_update_crl_offline_skips_real_cdps(sandbox_env, monkeypatch):
+    """Unreachable CDPs must not break the update (offline-safe)."""
+    import requests
+    from catrust import manager
+    monkeypatch.setenv("CATRUST_REAL_CRL_URLS", "http://10.255.255.1/nope.crl")
+
+    def boom(url, timeout=5):
+        raise requests.ConnectionError("offline")
+    monkeypatch.setattr(requests, "get", boom)
+    bl = manager.update_crl()
+    assert bl and all(e.source.startswith("CRL (scenario)") for e in bl)
+
+
+def test_forged_crl_signature_rejected(sandbox_env):
+    """A CRL claiming our issuer but signed by another key must be dropped."""
+    import datetime
+    from cryptography import x509
+    from cryptography.hazmat.primitives import hashes, serialization
+    from cryptography.hazmat.primitives.asymmetric import rsa
+    from catrust import manager, pki
+    inter = x509.load_pem_x509_certificate(
+        (sandbox_env / "pki" / "inter.crt").read_bytes())
+    attacker_key = rsa.generate_private_key(public_exponent=65537, key_size=2048)
+    now = datetime.datetime.now(datetime.timezone.utc)
+    forged = (x509.CertificateRevocationListBuilder()
+              .issuer_name(inter.subject)
+              .last_update(now - datetime.timedelta(days=1))
+              .next_update(now + datetime.timedelta(days=7))
+              .add_revoked_certificate(x509.RevokedCertificateBuilder()
+                  .serial_number(0xDEAD).revocation_date(now).build())
+              .sign(attacker_key, hashes.SHA256()))
+    der = forged.public_bytes(serialization.Encoding.DER)
+    assert manager._parse_crl(der) == []          # issuer IS in bundle, sig invalid
+    # and the genuine scenario CRL (signed by the real inter key) is accepted:
+    assert manager._parse_crl(pki.load_pki(sandbox_env / "pki").crl_pem)
 
 
 def test_chrome_crlset_roundtrip():

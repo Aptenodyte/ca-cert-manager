@@ -5,6 +5,7 @@ import pytest
 @pytest.fixture()
 def client(tmp_path, monkeypatch):
     monkeypatch.setenv("CATRUST_ROOT", str(tmp_path / "sandbox"))
+    monkeypatch.setenv("CATRUST_REAL_CRL_URLS", "")  # hermetic: no live CDP fetches
     from catrust import sandbox
     sandbox.setup_sandbox(tmp_path / "sandbox")
     from catrust.web import create_app

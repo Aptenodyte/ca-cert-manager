@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import json
+import os
 from pathlib import Path
 
 import yaml
@@ -24,8 +25,52 @@ def assess_all(stores: list[TrustStore]) -> dict[str, StoreAssessment]:
     return {s.id: s.assess() for s in stores}
 
 
-def _parse_crl(crl_pem: str) -> list[BlocklistEntry]:
-    crl = x509.load_pem_x509_crl(crl_pem.encode())
+DEFAULT_REAL_CRL_URLS = [
+    "http://x1.c.lencr.org/",                             # ISRG Root X1 (Let's Encrypt)
+    "http://crl3.digicert.com/DigiCertGlobalRootCA.crl",  # DigiCert Global Root CA
+    "http://crl4.digicert.com/DigiCertGlobalRootG2.crl",  # DigiCert Global Root G2
+]
+
+
+def real_crl_urls() -> list[str]:
+    """Real CRL distribution points queried on 'Update CRL'. Override with the
+    CATRUST_REAL_CRL_URLS env var (comma-separated); set it to "" to disable."""
+    raw = os.environ.get("CATRUST_REAL_CRL_URLS")
+    if raw is None:
+        return list(DEFAULT_REAL_CRL_URLS)
+    return [u.strip() for u in raw.split(",") if u.strip()]
+
+
+def _load_crl(data: str | bytes) -> x509.CertificateRevocationList:
+    """Parse a CRL as PEM or DER (CDPs usually serve DER)."""
+    raw = data.encode() if isinstance(data, str) else data
+    try:
+        return x509.load_pem_x509_crl(raw)
+    except ValueError:
+        return x509.load_der_x509_crl(raw)
+
+
+def _issuer_cert_in_bundle(crl: x509.CertificateRevocationList) -> x509.Certificate | None:
+    """Find the CRL issuer's cert in the sandbox system bundle (for signature checks)."""
+    from .stores import _bundle
+    bundle = sandbox_root() / "etc" / "ssl" / "ca-bundle.crt"
+    for c in _bundle.load_certs(bundle):
+        if c.subject == crl.issuer:
+            return c
+    return None
+
+
+def _parse_crl(data: str | bytes, source: str = "CRL") -> list[BlocklistEntry]:
+    """Parse a CRL (PEM or DER) into blocklist entries. If the issuer cert is in the
+    sandbox system bundle, the CRL signature is verified — forged CRLs are dropped."""
+    crl = _load_crl(data)
+    issuer_cert = _issuer_cert_in_bundle(crl)
+    if issuer_cert is not None:
+        try:
+            if not crl.is_signature_valid(issuer_cert.public_key()):
+                return []
+        except Exception:
+            return []
     entries = []
     for rc in crl:
         try:
@@ -38,10 +83,17 @@ def _parse_crl(crl_pem: str) -> list[BlocklistEntry]:
             subject="",
             issuer=crl.issuer.rfc4514_string(),
             revoked_at=revoked_at.date().isoformat() if hasattr(revoked_at, "date") else str(revoked_at),
-            source="CRL",
+            source=source,
             reason=reason,
         ))
     return entries
+
+
+def _fetch_crl(url: str) -> bytes:
+    import requests
+    r = requests.get(url, timeout=5)
+    r.raise_for_status()
+    return r.content
 
 
 def collect_blocklist(crl_pems: list[str] | None = None,
@@ -56,16 +108,34 @@ def collect_blocklist(crl_pems: list[str] | None = None,
 
 
 def update_crl(crl_pem: str | None = None, url: str | None = None) -> list[BlocklistEntry]:
-    """'Update CRL': ingest a CRL (PEM or URL) into the sandbox blocklist state."""
+    """'Update CRL': ingest CRLs into the sandbox blocklist state.
+
+    Sources merged: an explicit `crl_pem`, an explicit `url` (fetched live), the
+    scenario's CRL when neither is given, and — always — the REAL public CRL
+    distribution points from `real_crl_urls()` (ISRG/DigiCert by default; override
+    with CATRUST_REAL_CRL_URLS, "" disables). CRLs are parsed as PEM or DER and
+    signature-verified against the issuer cert in the sandbox bundle when present.
+    Unreachable CDPs are skipped, so this is safe offline."""
+    sources: list[tuple[str, str | bytes]] = []
+    if crl_pem:
+        sources.append(("CRL", crl_pem))
     if url:
-        import requests
-        crl_pem = requests.get(url, timeout=10).text
-    if not crl_pem:
+        sources.append((f"CRL {url}", _fetch_crl(url)))
+    if not crl_pem and not url:
         # fall back to the scenario's CRL from the sandbox PKI
         rt = sandbox_root() / "scenario.runtime.json"
         if rt.exists():
-            crl_pem = json.loads(rt.read_text()).get("crl_pem")
-    entries = _parse_crl(crl_pem) if crl_pem else []
+            pem = json.loads(rt.read_text()).get("crl_pem")
+            if pem:
+                sources.append(("CRL (scenario)", pem))
+    for u in real_crl_urls():
+        try:
+            sources.append((f"CRL {u}", _fetch_crl(u)))
+        except Exception:
+            continue  # offline or CDP down — skip this one
+    entries: list[BlocklistEntry] = []
+    for label, data in sources:
+        entries += _parse_crl(data, source=label)
     state_file = sandbox_root() / "blocklist.json"
     state_file.parent.mkdir(parents=True, exist_ok=True)
     existing = json.loads(state_file.read_text()) if state_file.exists() else []
