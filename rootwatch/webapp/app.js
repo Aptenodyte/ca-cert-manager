@@ -199,6 +199,18 @@ createApp({
       } catch (e) { this.log(`probe failed (${label}): ${e.message}`, "err"); }
     },
     async remediate(storeId, mode) {
+      // confirm before distrusting — root mode is destructive and hard to undo
+      const storeName = (this.stores.find(s => s.id === storeId) || {}).name || storeId;
+      const msg = mode === "root"
+        ? `☢️ Distrust the ENTIRE root CA in "${storeName}"?\n\n` +
+          `This breaks EVERY certificate this CA has issued — all sites chaining to it will fail.\n` +
+          `Only proceed if the root's private key itself is compromised.\n\nProceed with "root" mode?`
+        : `🔬 Distrust only the compromised SPKI hash(es) in "${storeName}"?\n\n` +
+          `Surgical: other certs from this CA (and future key rotations) keep working.\n\nProceed with "spki" mode?`;
+      if (!window.confirm(msg)) {
+        this.log(`remediation cancelled by user (${mode} mode, ${storeId}) — no changes made`, "");
+        return;
+      }
       this.busy = true;
       this.log(`${mode === "root" ? "☢️ distrusting entire root" : "🔬 distrusting SPKI hash"} in ${storeId}…`, "warn");
       await this.logProbes("PRE-remediation", storeId);
