@@ -37,7 +37,7 @@ createApp({
         (s.findings || []).some(f => (f.kind + " " + f.detail).toLowerCase().includes(q)));
     },
     affectedCount() { return this.stores.filter(s => this.statusOf(s) === "alert").length; },
-    alertCount() { return this.stores.reduce((n, s) => n + (s.alerts || []).length + (s.findings || []).length, 0); },
+    alertCount() { return this.stores.reduce((n, s) => n + (s.alerts || []).length, 0); },
     blocklistSources() {
       const srcs = [...new Set(this.blocklist.map(e => e.source || "CRL"))];
       return srcs.join(", ");
@@ -126,10 +126,11 @@ createApp({
         this.log(`audit: ${this.stores.length} stores, ${this.affectedCount} affected, ` +
                  `${this.blocklist.length} blocklist entries`, this.affectedCount ? "err" : "ok");
         for (const s of this.stores) {
-          const n = (s.alerts || []).length + (s.findings || []).length;
-          const first = ((s.findings || [])[0] || (s.alerts || [])[0] || {});
-          const detail = first.detail || first.reason || first.issuer || "";
-          if (n) this.log(`  ⚠ ${s.name}: ${s.total_roots} roots, ${n} alert(s) — ${detail}`, "err");
+          const na = (s.alerts || []).length, nf = (s.findings || []).length;
+          const first = ((s.alerts || [])[0] || (s.findings || [])[0] || {});
+          const detail = first.reason ? `${first.reason} (${first.issuer || first.subject || "CRL"})` : (first.detail || "");
+          if (na || nf) this.log(`  ⚠ ${s.name}: ${s.total_roots} roots, ${na} alert(s)` +
+                                 (nf ? `, ${nf} finding(s)` : "") + (detail ? ` — ${detail}` : ""), "err");
           else this.log(`  ✓ ${s.name}: ${s.total_roots} roots, ok`, "ok");
         }
       } catch (e) { this.log("audit failed: " + e.message, "err"); }
