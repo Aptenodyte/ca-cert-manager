@@ -26,7 +26,7 @@
       <button class="status-pill" :class="[alertCount > 0 ? 'attack' : 'secure', { clickable: alertCount > 0 }]"
               @click="jumpToAffected"
               :title="alertCount > 0 ? 'jump to the first affected store and show its alerts' : 'no alerts'">
-        {{ alertCount > 0 ? "● " + alertCount + " ALERTS — click to jump" : "● POSTURE OK" }}
+        {{ alertCount > 0 ? "● " + alertCount + " ALERTS" : "● POSTURE OK" }}
       </button>
       <button class="theme-toggle" @click="toggleTheme"
               :title="'switch to ' + (theme === 'dark' ? 'light' : 'dark') + ' mode'">
