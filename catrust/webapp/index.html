@@ -47,15 +47,30 @@
     <div class="table-head">
       <h2>Applications / CA stores</h2>
       <button @click="setSort('urgent')" :class="{ active: sortMode === 'urgent' }" title="sort rows by urgency">🔥 Most urgent</button>
-      <button @click="setSort('recent')" :class="{ active: sortMode === 'recent' }" title="sort rows by latest alert">🕒 Most recent</button>
     </div>
-    <div v-if="blocklist.length" class="blocklist-line">
-      📥 application blocklist: {{ blocklist.length }} entr{{ blocklist.length > 1 ? "ies" : "y" }}
-      ({{ blocklistSources }})
-    </div>
+    <details v-if="blocklist.length" class="blocklist">
+      <summary>
+        📥 application blocklist: {{ blocklist.length }} entr{{ blocklist.length > 1 ? "ies" : "y" }}
+        ({{ blocklistSources }}) ▾
+      </summary>
+      <div class="bl-list mono">
+        <div v-for="(e, i) in blocklist" :key="i" class="bl-entry">
+          #{{ i + 1 }} · {{ e.source || "CRL" }} · revoked: {{ e.revoked_at || "—" }}
+          <div>serial: {{ e.serial || "—" }} · spki: {{ e.spki_hash || "—" }}</div>
+          <div>{{ e.subject || "—" }} — {{ e.reason || "revoked" }}</div>
+        </div>
+      </div>
+    </details>
     <table class="stores">
       <thead>
-        <tr><th>Application / CA store</th><th>Status</th><th>Roots</th><th>Alerts</th><th></th></tr>
+        <tr>
+          <th>Application / CA store</th>
+          <th>Status
+            <button class="th-sort" @click="setSort('recent')" :class="{ active: sortMode === 'recent' }"
+                    title="sort rows by latest alert">🕒 Most recent</button>
+          </th>
+          <th>Roots</th><th>Alerts</th><th></th>
+        </tr>
       </thead>
       <tbody>
         <template v-for="s in sortedStores" :key="s.id">
