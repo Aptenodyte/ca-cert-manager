@@ -185,6 +185,9 @@ table { width: 100%; border-collapse: collapse; font-size: 13px; }
 th, td { text-align: left; padding: 8px 10px; border-bottom: 1px solid var(--border); }
 th { color: var(--muted); text-transform: uppercase; font-size: 11px; letter-spacing: .6px; }
 .tag { padding: 2px 8px; border-radius: 999px; font-size: 11px; font-weight: 700; text-transform: uppercase; }
+button.tagbtn { border: none; cursor: pointer; font-size: 11px; padding: 3px 9px; }
+button.tagbtn:hover { filter: brightness(1.25); }
+button.tagbtn.rejected { cursor: default; }
 .tag.accepted { background: var(--red-dim); color: var(--red); }
 .tag.rejected { background: var(--green-dim); color: var(--green); }
 #log {

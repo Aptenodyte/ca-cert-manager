@@ -136,11 +136,15 @@ createApp({
     },
     jumpToAffected() {
       const first = this.stores.find(s => this.statusOf(s) === "alert");
-      if (first) {
-        this.openRow = first.id;
-        this.log(`🚨 jumped to first affected store: ${first.name}`, "err");
-        this.$nextTick(() => document.querySelector("tr.open")?.scrollIntoView({ block: "center" }));
-      } else this.log("no affected stores — nothing to jump to", "ok");
+      if (first) this.openAlerts(first, "🚨 jumped to first affected store: ");
+      else this.log("no affected stores — nothing to jump to", "ok");
+    },
+    // clicking the row's ALERT badge opens that row and scrolls to its alert box
+    openAlerts(s, prefix = "⚠ ") {
+      this.openRow = s.id;
+      this.log(`${prefix}${s.name}: showing ${(s.alerts || []).length} alert(s)`, "err");
+      this.$nextTick(() =>
+        document.querySelector("tr.open .alert-box")?.scrollIntoView({ block: "center" }));
     },
     async remediate(storeId, mode) {
       this.busy = true;

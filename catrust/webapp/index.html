@@ -40,9 +40,8 @@
     <button @click="updateCrl" :disabled="busy">📥 Update CRL</button>
     <button class="danger" @click="jumpToAffected">🚨 Jump to Affected ({{ affectedCount }})</button>
     <span class="sort-group">
-      <span class="lbl">sort:</span>
-      <button @click="setSort('urgent')" :class="{ active: sortMode === 'urgent' }">🔥 Most urgent</button>
-      <button @click="setSort('recent')" :class="{ active: sortMode === 'recent' }">🕒 Most recent</button>
+      <button @click="setSort('urgent')" :class="{ active: sortMode === 'urgent' }" title="sort rows by urgency">🔥 Most urgent</button>
+      <button @click="setSort('recent')" :class="{ active: sortMode === 'recent' }" title="sort rows by latest alert">🕒 Most recent</button>
     </span>
   </section>
 
@@ -62,8 +61,10 @@
           <tr class="store-row" :class="{ affected: statusOf(s) === 'alert', open: openRow === s.id }"
               @click="openRow = openRow === s.id ? null : s.id">
             <td><span class="icon">{{ s.icon }}</span> {{ s.name }}</td>
-            <td><span class="tag" :class="statusOf(s) === 'alert' ? 'accepted' : 'rejected'">
-              {{ statusOf(s) === "alert" ? "ALERT" : "ok" }}</span></td>
+            <td><button class="tag tagbtn" :class="statusOf(s) === 'alert' ? 'accepted' : 'rejected'"
+                        @click.stop="openAlerts(s)"
+                        :title="statusOf(s) === 'alert' ? 'click to show this store’s alerts' : 'no alerts'">
+              {{ statusOf(s) === "alert" ? "ALERT" : "ok" }}</button></td>
             <td>{{ s.total_roots }}</td>
             <td>{{ (s.alerts || []).length }}</td>
             <td class="chev">{{ openRow === s.id ? "▾" : "▸" }}</td>
