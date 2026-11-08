@@ -26,8 +26,9 @@ revoked cert = attack works; `openssl -crl_check` rejects) → `POST /api/attack
 Flow:
 
 1. `rootcanal setup` on the host; the web dashboard starts with
-   `CATRUST_SERVER_HOST=0.0.0.0` so the victim container can reach the mock TLS server
-   on :8443 via `host.docker.internal` (the certs are mock/sandbox-only).
+   `CATRUST_SERVER_HOST=0.0.0.0`. The victim container runs with `--network host`
+   (host.docker.internal is unreachable in nested-docker environments), so it reaches
+   the mock TLS server directly on `127.0.0.1:8443`.
 2. Host probe matrix via `GET /api/probe` (requests/curl ACCEPT pre-fix).
 3. Victim container (`--image`, default `python:3.14-slim`) is launched with the sandbox
    bind-mounted at `/sandbox`; its CA bundle **is** the RootCanal system store. A stdlib
@@ -38,9 +39,8 @@ Flow:
 5. The victim re-runs the same handshake → **REJECT** (SAFE). Host `GET /api/probe`
    shows every client rejecting too. Prints `✅ DEMO PASS` / `❌ DEMO FAIL`.
 
-Note: inside the victim the hostname check is disabled (`check_hostname=False`) because the
-cert SAN is `localhost`/`127.0.0.1` while the server is reached as `host.docker.internal` —
-the demo proves **trust/revocation** behavior, not name matching.
+Note: inside the victim the hostname check is disabled (`check_hostname=False`) — the demo
+proves **trust/revocation** behavior, not name matching.
 
 ## 3. Interactive dashboard
 

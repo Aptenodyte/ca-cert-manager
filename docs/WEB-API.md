@@ -65,7 +65,8 @@ Starts the mock TLS server on `127.0.0.1:8443` if it isn't running
 (`server.start_server_background`, honoring `CATRUST_SERVER_HOST`/`CATRUST_SERVER_PORT`),
 then runs `probes.probe_all` with a store `cafile()` and the scenario CRL.
 ```json
-{"url": "https://127.0.0.1:8443/", "cafile": ".sandbox/etc/ssl/ca-bundle.crt",
+{"server_url": "https://127.0.0.1:8443/", "url": "https://127.0.0.1:8443/",
+ "cafile": ".sandbox/etc/ssl/ca-bundle.crt",
  "probes": [{"client": "requests|requests-crl|curl|openssl-crl", "url": "...",
              "success": true, "verify_error": "", "detail": "", "crl_checked": false,
              "elapsed_ms": 12}]}
