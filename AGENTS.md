@@ -113,10 +113,16 @@ The RootWatch **dashboard also runs inside the container** (`rootwatch.cli web -
 tab 2 or directly at http://127.0.0.1:8081/. Video flow: green-lock phishing page ->
 Bob signs in -> loot in <sandbox>/attacker/loot.jsonl -> **fix in the web UI**: Audit ->
 all 8 stores ALERT -> per store row "☢️ Distrust entire root" -> /usr/local/bin/watch-trust
-auto re-syncs Firefox NSS when the bundle changes -> reload shows Firefox's "Potential
-Security Risk Ahead". `--cleanup` stops the MITM server and removes the container
+auto re-syncs Firefox NSS when the bundle shrinks AND restarts Firefox (a running
+Firefox caches its trust store in memory, so the NSS DB must be reloaded) -> the
+phishing tab shows Firefox's "Warning: Security Risk" with a ⛔ Not Secure padlock.
+Container helpers: browser-trust-check (does Firefox's NSS DB still trust the attacker
+chain?), desktop-shot (PNG of the desktop), sync-browser-trust (manual re-import).
+`--cleanup` stops the MITM server and removes the container
 (pid/cid in /tmp/rootwatch-mitm-browser.*). All MITM scripts now kill a stale MITM
-server from a previous run and fall back to an ephemeral port if :9443 is busy.
+server from a previous run, remove leftover victim containers, fall back to an
+ephemeral port if :9443 is busy, and verify the in-container dashboard is really up
+and pointed at the victim's sandbox before declaring the stage ready.
 
 ## Remediation modes (SPKI vs root — expect judges to ask)
 - `spki` (default, surgical): block only the compromised keys' SPKI sha256 hashes

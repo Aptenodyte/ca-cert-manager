@@ -116,6 +116,11 @@ echo "    MITM server live at $MITM_URL   cert subject: $CERT_SUBJ"
 echo "    (fresh serial — NOT on any CRL; POSTed credentials go to $ROOTWATCH_ROOT/attacker/loot.jsonl)"
 echo
 echo "=== [3/4] launch victim desktop container ($IMAGE), sandbox at /sandbox, repo at /rootwatch ==="
+# clean up leftovers from a previous (interrupted) run: they keep the shared host
+# network ports (VNC, dashboard) and their dashboard would serve a STALE sandbox
+docker rm -f $(docker ps -aq --filter "name=rootwatch-mitm-browser-") >/dev/null 2>&1 || true
+pkill -f "rootwatch.cli web --host 0.0.0.0 --port $DASH_PORT" 2>/dev/null || true
+sleep 1
 CONTAINER="rootwatch-mitm-browser-$$"
 echo "$CONTAINER" > "$CIDFILE"
 # --network host: 127.0.0.1 inside the container IS the host, so the phishing
@@ -163,18 +168,50 @@ rm -f "$SYNC"
 docker exec "$CONTAINER" chmod +x /usr/local/bin/sync-browser-trust
 docker exec "$CONTAINER" sync-browser-trust
 
+# profile prefs: no "Restore session?" dialog when the browser is restarted by the
+# trust-sync watcher (it would block the demo)
+docker exec "$CONTAINER" sh -c 'mkdir -p /root/rw-profile && cat > /root/rw-profile/user.js <<EOF
+user_pref("browser.sessionstore.resume_from_crash", false);
+user_pref("browser.sessionstore.max_resumed_crashes", 0);
+user_pref("browser.warnOnQuit", false);
+user_pref("browser.startup.page", 0);
+user_pref("browser.aboutwelcome.enabled", false);
+user_pref("browser.privacyNotice.show", false);
+user_pref("browser.startup.homepage_override.mstone", "ignore");
+user_pref("datareporting.policy.dataSubmissionEnabled", false);
+user_pref("datareporting.healthreport.uploadEnabled", false);
+user_pref("toolkit.telemetry.enabled", false);
+user_pref("browser.shell.checkDefaultBrowser", false);
+EOF'
+
 # watcher: when the system bundle changes (i.e. the UI remediation rewrote it),
-# re-sync Firefox's NSS DB — this is what the OS does in the real world, so the
-# video needs no extra manual step between clicking in the UI and reloading.
+# re-sync Firefox's NSS DB — this is what the OS does in the real world — and,
+# because a RUNNING Firefox caches its trust store in memory, restart the browser
+# so it reloads the NSS DB. The restart is what makes the block visible.
 WATCH="$(mktemp /tmp/watch-trust.XXXXXX.sh)"
 cat > "$WATCH" <<'WEOF'
 #!/bin/sh
+# usage: watch-trust <phish-url> [dashboard-url]
+PHISH="$1"; DASH="$2"
 last=""
 while true; do
   n=$(grep -c "BEGIN CERTIFICATE" /sandbox/etc/ssl/ca-bundle.crt 2>/dev/null || echo 0)
   if [ "$n" != "$last" ]; then
-    last="$n"
+    prev="$last"; last="$n"
     /usr/local/bin/sync-browser-trust >> /tmp/watch-trust.log 2>&1
+    if [ -n "$prev" ] && [ "$n" -lt "$prev" ]; then
+      # the trust store shrank (root distrusted): reload it in Firefox
+      echo "trust store shrank ($prev -> $n): restarting Firefox to reload the NSS DB" >> /tmp/watch-trust.log
+      pkill -f "firefox-esr --profile /root/rw-profile" 2>/dev/null
+      sleep 3
+      rm -f /root/rw-profile/lock /root/.parentlock /root/rw-profile/.parentlock 2>/dev/null
+      # drop the session store so Firefox doesn't show "Open previous tabs?" after the restart
+      rm -f /root/rw-profile/sessionstore.jsonlz4 /root/rw-profile/sessionstore-backups/* 2>/dev/null
+      DISPLAY=:99 HOME=/root firefox-esr --profile /root/rw-profile --no-remote \
+        "$PHISH" ${DASH:+"$DASH"} >> /tmp/firefox.log 2>&1 &
+      sleep 4
+      DISPLAY=:99 xdotool search --onlyvisible --class firefox windowmove 0 0 windowsize 1280 780 2>/dev/null || true
+    fi
   fi
   sleep 2
 done
@@ -182,8 +219,59 @@ WEOF
 docker cp "$WATCH" "$CONTAINER":/usr/local/bin/watch-trust >/dev/null
 rm -f "$WATCH"
 docker exec "$CONTAINER" chmod +x /usr/local/bin/watch-trust
-docker exec -d "$CONTAINER" sh -c '/usr/local/bin/watch-trust >/dev/null 2>&1 &'
-echo "    trust-sync watcher running (auto re-syncs Firefox when the bundle changes)"
+docker exec -d "$CONTAINER" sh -c \
+  "/usr/local/bin/watch-trust 'https://$HOSTNAME:$MITM_PORT/' 'http://127.0.0.1:$DASH_PORT/' >/dev/null 2>&1 &"
+echo "    trust-sync watcher running (re-syncs Firefox + restarts it when the bundle shrinks)"
+
+# browser-trust-check: what does FIREFOX's own trust DB decide about the phishing
+# cert? The eMudhra root/intermediate aliases in the NSS DB are exactly what Firefox
+# uses to validate the attacker chain, so their presence decides the outcome.
+# (aliases are named rootwatch-<sha256 fingerprint>, so we compare fingerprints)
+CHECK="$(mktemp /tmp/browser-trust-check.XXXXXX.sh)"
+cat > "$CHECK" <<'CEOF'
+#!/bin/sh
+# usage: browser-trust-check
+DB=sql:/root/rw-profile
+# wait for a stable alias count (a re-sync deletes then re-adds them)
+prev=-1; roots=0
+i=0
+while [ "$i" -lt 15 ]; do
+  LIST="$(certutil -L -d "$DB" 2>/dev/null)"
+  roots=$(printf '%s\n' "$LIST" | grep -c '^rootwatch-')
+  [ "$roots" = "$prev" ] && break
+  prev="$roots"; i=$((i+1)); sleep 1
+done
+hit=0
+for f in /sandbox/pki/root.crt /sandbox/pki/inter.crt; do
+  [ -f "$f" ] || continue
+  fp=$(openssl x509 -in "$f" -noout -fingerprint -sha256 2>/dev/null | cut -d= -f2 | tr -d ':')
+  [ -n "$fp" ] && printf '%s\n' "$LIST" | grep -qi "rootwatch-$fp" && hit=$((hit+1))
+done
+if [ "$hit" -gt 0 ]; then
+  echo "FIREFOX TRUSTS the phishing cert ($hit/2 eMudhra CAs in its NSS DB, $roots roots) — MITM works"
+  exit 0
+else
+  echo "FIREFOX REJECTS the phishing cert (no eMudhra CA in its NSS DB, $roots roots) — MITM blocked"
+  exit 1
+fi
+CEOF
+docker cp "$CHECK" "$CONTAINER":/usr/local/bin/browser-trust-check >/dev/null
+rm -f "$CHECK"
+docker exec "$CONTAINER" chmod +x /usr/local/bin/browser-trust-check
+echo "    browser trust check: $(docker exec "$CONTAINER" browser-trust-check || true)"
+
+# screenshot helper: capture the container desktop (for video frames / slides)
+SHOT="$(mktemp /tmp/desktop-shot.XXXXXX.sh)"
+cat > "$SHOT" <<'SEOF'
+#!/bin/sh
+# usage: desktop-shot [outfile]   (capture the X display inside the container)
+out="${1:-/tmp/screen.png}"
+DISPLAY=:99 import -window root "$out" 2>/dev/null && echo "screenshot: $out"
+SEOF
+docker cp "$SHOT" "$CONTAINER":/usr/local/bin/desktop-shot >/dev/null
+rm -f "$SHOT"
+docker exec "$CONTAINER" chmod +x /usr/local/bin/desktop-shot
+docker exec "$CONTAINER" sh -c 'DEBIAN_FRONTEND=noninteractive apt-get install -y -qq imagemagick >/dev/null 2>&1' || true
 echo
 echo "=== [4/4] start the container desktop: Xvfb :99, x11vnc, noVNC on :$VNC_PORT, Firefox, xterm ==="
 docker exec -d "$CONTAINER" sh -c 'Xvfb :99 -screen 0 1280x800x24 >/tmp/xvfb.log 2>&1 &'
@@ -197,13 +285,30 @@ docker exec -d -e ROOTWATCH_ROOT=/sandbox -e PYTHONPATH=/rootwatch \
   -e ROOTWATCH_REAL_CRL_URLS= -w /rootwatch "$CONTAINER" \
   sh -c "python3 -m rootwatch.cli web --host 0.0.0.0 --port $DASH_PORT >/tmp/dashboard.log 2>&1 &"
 sleep 4
+# make sure it is really up and really looking at the victim's sandbox
+if ! curl -sf "http://127.0.0.1:$DASH_PORT/api/health" >/dev/null; then
+  echo "ERROR: the in-container dashboard did not start (port $DASH_PORT busy?)." >&2
+  docker exec "$CONTAINER" tail -5 /tmp/dashboard.log >&2 || true
+  echo "       free the port or pass --dash-port <other> and re-run." >&2
+  exit 1
+fi
+DASH_ROOTS="$(curl -sf -X POST "http://127.0.0.1:$DASH_PORT/api/audit" \
+  | "$PY" -c "import sys,json; d=json.load(sys.stdin); print(sum(s['total_roots'] for s in d['stores']))" 2>/dev/null || echo 0)"
+[ "${DASH_ROOTS:-0}" -gt 0 ] || {
+  echo "ERROR: the dashboard is up but sees no roots — stale container/mount?" >&2
+  exit 1
+}
+echo "    dashboard up on :$DASH_PORT (sees $DASH_ROOTS roots in the victim's sandbox)"
 
-# Firefox: tab 1 = the phishing site (Bob), tab 2 = the RootWatch dashboard (the fix)
+# Firefox: ONE instance, two tabs — tab 1 = the phishing site (Bob),
+# tab 2 = the RootWatch dashboard (where the fix happens)
 docker exec -d -e DISPLAY=:99 -e HOME=/root "$CONTAINER" sh -c \
-  "firefox-esr --profile /root/rw-profile --no-remote 'https://$HOSTNAME:$MITM_PORT/' >/tmp/firefox.log 2>&1 &"
-sleep 5
-docker exec -d -e DISPLAY=:99 -e HOME=/root "$CONTAINER" sh -c \
-  "firefox-esr --profile /root/rw-profile --no-remote --new-tab 'http://127.0.0.1:$DASH_PORT/' >/tmp/firefox2.log 2>&1 &"
+  "firefox-esr --profile /root/rw-profile --no-remote 'https://$HOSTNAME:$MITM_PORT/' 'http://127.0.0.1:$DASH_PORT/' >/tmp/firefox.log 2>&1 &"
+sleep 6
+# fill the virtual screen with the browser window (no window manager in the container)
+docker exec "$CONTAINER" sh -c 'DEBIAN_FRONTEND=noninteractive apt-get install -y -qq xdotool >/dev/null 2>&1' || true
+docker exec -e DISPLAY=:99 "$CONTAINER" sh -c \
+  'xdotool search --onlyvisible --class firefox windowmove 0 0 windowsize 1280 780 2>/dev/null || true'
 docker exec -d -e DISPLAY=:99 -e HOME=/root "$CONTAINER" sh -c \
   'xterm -geometry 100x28 -e "sh -c \"echo RootWatch victim terminal; echo; echo (the fix can be done in the web UI tab; CLI also works:); echo; echo   ROOTWATCH_ROOT=/sandbox PYTHONPATH=/rootwatch python3 -m rootwatch.cli remediate --mode root; echo; echo loot:  cat /sandbox/attacker/loot.jsonl; exec sh\"" >/tmp/xterm.log 2>&1 &'
 sleep 6

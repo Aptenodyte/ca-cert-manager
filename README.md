@@ -94,9 +94,17 @@ by "eMudhra Demo Issuing CA" — click the lock to show it). Sign in as Bob →
 credentials appear in `.sandbox/attacker/loot.jsonl`. Then **fix it in the web UI**:
 click *🔍 Audit CA stores* → all 8 stores show ALERT → click a store row → *☢️
 Distrust entire root* (repeat per store; the live log narrates every action). A
-trust-sync watcher re-syncs Firefox's NSS DB from the fixed bundle automatically, so
-reloading tab 1 gives **"Warning: Potential Security Risk Ahead"** — MITM blocked.
-(`./demo/run-mitm-browser-demo.sh --cleanup` tears everything down.)
+trust-sync watcher re-syncs Firefox's NSS DB from the fixed bundle automatically and
+**restarts the browser** (a running Firefox caches its trust store in memory, so it must
+reload the NSS DB), so tab 1 flips to **"Warning: Security Risk"** with a **⛔ Not
+Secure** padlock — MITM blocked. (`./demo/run-mitm-browser-demo.sh --cleanup` tears
+everything down.)
+
+In-container helpers (for the video or for checking state):
+- `browser-trust-check` → prints whether *Firefox's own NSS DB* still trusts the
+  phishing cert (`FIREFOX TRUSTS … MITM works` / `FIREFOX REJECTS … MITM blocked`)
+- `desktop-shot [file]` → PNG screenshot of the container desktop (video frames)
+- `sync-browser-trust` → re-import the sandbox bundle into Firefox's NSS DB
 
 ## The dashboard (Vue 3, vendored — no build step, works offline)
 
