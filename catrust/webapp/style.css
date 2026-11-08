@@ -174,8 +174,9 @@ button.danger { background: var(--red-dim); border-color: var(--red); color: var
 button:disabled { opacity: .45; cursor: default; }
 button.active { border-color: var(--blue); color: var(--blue); font-weight: 700;
   box-shadow: 0 0 10px rgba(88, 166, 255, .25); }
-.sort-group { display: inline-flex; align-items: center; gap: 6px; margin-left: 6px; }
-.sort-group .lbl { color: var(--muted); font-size: 12px; text-transform: uppercase; letter-spacing: .6px; }
+.table-head { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.table-head h2 { margin-bottom: 12px; }
+.table-head button { padding: 7px 13px; font-size: 13px; }
 select.alert-pick {
   display: block; max-width: 100%; margin: 0 0 8px;
   background: var(--panel2); color: var(--text);
