@@ -176,4 +176,9 @@ the two-person work split (`docs/PERSON-A.md`, `docs/PERSON-B.md`).
 - The mock server binds `127.0.0.1:8443` by default. `demo/run-attack-demo.sh` runs the
   victim container with `--network host` so it reaches the mock server on `127.0.0.1:8443`
   (the certs involved are mock, sandbox-only).
+- Docker demos need a reachable daemon: if you get
+  `permission denied ... /var/run/docker.sock`, run
+  `sudo usermod -aG docker $USER && newgrp docker` (then re-run), or use `sudo`.
+  The scripts check this up front and print the fix. No Docker? Use
+  `./demo/run-mitm-demo.sh` or `./demo.sh` — both are sandbox-only.
 - LF line endings everywhere (`.gitattributes`); `demo*.sh` included.

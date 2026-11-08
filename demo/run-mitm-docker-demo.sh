@@ -48,7 +48,14 @@ cleanup() {
 trap cleanup EXIT
 
 command -v docker >/dev/null 2>&1 || {
-  echo "ERROR: docker not found." >&2
+  echo "ERROR: docker not found. Install Docker, or run the local demo instead: ./demo/run-mitm-demo.sh" >&2
+  exit 1
+}
+docker info >/dev/null 2>&1 || {
+  echo "ERROR: cannot reach the Docker daemon ('docker info' failed)." >&2
+  echo "       If it says 'permission denied ... /var/run/docker.sock', run:" >&2
+  echo "         sudo usermod -aG docker \$USER && newgrp docker" >&2
+  echo "       then re-run this script (or run it with sudo)." >&2
   exit 1
 }
 

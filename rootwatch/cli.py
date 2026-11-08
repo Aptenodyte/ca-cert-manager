@@ -148,6 +148,13 @@ def build_parser() -> argparse.ArgumentParser:
 
 
 def main(argv: list[str] | None = None) -> int:
+    # keep demo/CLI output clean: real-world roots with non-positive serials trip this
+    import warnings
+    try:
+        from cryptography.utils import CryptographyDeprecationWarning
+        warnings.filterwarnings("ignore", category=CryptographyDeprecationWarning)
+    except Exception:
+        pass
     args = build_parser().parse_args(argv)
     handlers = {
         "setup": cmd_setup, "inject": cmd_inject, "audit": cmd_audit,
