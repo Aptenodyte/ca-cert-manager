@@ -182,3 +182,45 @@ def load_pki(pki_dir: Path) -> PKI:
     pki.inter_spki_hash = meta["inter_spki_hash"]
     pki.leaf_spki_hash = meta["leaf_spki_hash"]
     return pki
+
+
+def mint_attacker_cert(pki_dir: Path, hostname: str = "bank.local") -> tuple[Path, Path, Path]:
+    """Simulated MITM: a FRESH leaf cert minted by the compromised intermediate.
+
+    Unlike the demo leaf, this serial was never revoked, so it is NOT on the CRL —
+    CRL-aware clients accept it too. Only distrusting the root stops it.
+    Writes attacker.crt / attacker.key / attacker-chain.pem (leaf+inter) under pki_dir.
+    Returns (cert_path, key_path, chain_path).
+    """
+    import ipaddress
+    pki_dir = Path(pki_dir)
+    pki = load_pki(pki_dir)
+    inter_key = serialization.load_pem_private_key(pki.inter_key_pem.encode(), password=None)
+    inter_cert = x509.load_pem_x509_certificate(pki.inter_cert_pem.encode())
+    atk_key = _key()
+    now = datetime.datetime.now(datetime.timezone.utc)
+    atk = (x509.CertificateBuilder()
+           .subject_name(_name(hostname))
+           .issuer_name(inter_cert.subject)
+           .public_key(atk_key.public_key())
+           .serial_number(x509.random_serial_number())
+           .not_valid_before(now - datetime.timedelta(minutes=5))
+           .not_valid_after(now + datetime.timedelta(days=90))
+           .add_extension(x509.BasicConstraints(ca=False, path_length=None), critical=True)
+           .add_extension(x509.SubjectAlternativeName(
+               [x509.DNSName(hostname), x509.DNSName("localhost"),
+                x509.IPAddress(ipaddress.ip_address("127.0.0.1"))]), critical=False)
+           .add_extension(x509.ExtendedKeyUsage([x509.oid.ExtendedKeyUsageOID.SERVER_AUTH]),
+                          critical=False)
+           .add_extension(x509.SubjectKeyIdentifier.from_public_key(atk_key.public_key()),
+                          critical=False)
+           .add_extension(x509.AuthorityKeyIdentifier.from_issuer_public_key(
+               inter_key.public_key()), critical=False)
+           .sign(inter_key, hashes.SHA256()))
+    cert_path = pki_dir / "attacker.crt"
+    key_path = pki_dir / "attacker.key"
+    chain_path = pki_dir / "attacker-chain.pem"
+    cert_path.write_text(_pem_cert(atk))
+    key_path.write_text(_pem_key(atk_key))
+    chain_path.write_text(_pem_cert(atk) + pki.inter_cert_pem)
+    return cert_path, key_path, chain_path

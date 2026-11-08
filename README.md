@@ -27,6 +27,9 @@ python3 -m venv .venv && .venv/bin/pip install -e ".[dev]"   # Linux & macOS
 .venv/bin/python -m rootwatch.cli web --port 8080                # dashboard: http://127.0.0.1:8080
 ./demo.sh                                                      # one-shot scripted demo (drives the web API)
 ./demo/run-attack-demo.sh --image python:3.14-slim             # live attack in a Docker victim container
+./demo/run-mitm-demo.sh                                        # simulated MITM in-sandbox: fresh cert from the
+                                                               # compromised CA (NOT on the CRL) — even CRL-aware
+                                                               # clients accept it pre-fix; root distrust stops it
 ```
 
 Other commands:
@@ -51,6 +54,14 @@ Other commands:
 4. One action (the dashboard's **☢️ Distrust entire root**, or `POST /api/attack-demo`)
    distrusts the root in **every** store → **all** clients now **reject** the handshake.
 
+**MITM variant** (`./demo/run-mitm-demo.sh`, no Docker): the attacker mints a *fresh*
+cert for `bank.local` from the compromised CA. Its serial is **not on the CRL**, so
+pre-fix even CRL-aware clients (`requests` with `VERIFY_CRL_CHECK_LEAF`,
+`openssl -crl_check`) **accept** the handshake — revocation checking cannot help.
+After one `remediate --mode root` across all 8 stores, every client **rejects** it.
+That is the eMudhra lesson: when the root key is compromised, only distrusting the
+root is sufficient.
+
 ## The dashboard (Vue 3, vendored — no build step, works offline)
 
 Single page, three boxes (see `rootwatch/webapp/`):
@@ -70,7 +81,8 @@ Single page, three boxes (see `rootwatch/webapp/`):
 3. **Live log** at the bottom (full width, auto-scroll) — every API call logs a line.
 
 There is deliberately **no attack/demo button** on the page — the live attack→remediation
-demo is the external script `demo/run-attack-demo.sh` (Docker victim container).
+demos are the external scripts `demo/run-attack-demo.sh` (Docker victim container) and
+`demo/run-mitm-demo.sh` (simulated MITM, in-sandbox).
 
 ### Web API
 
@@ -111,6 +123,7 @@ rootwatch/
 scenarios/emudhra.yaml   # the mock incident (fingerprint/serial populated by `setup`)
 demo.sh                  # one-shot scripted demo via the web API
 demo/run-attack-demo.sh  # live attack demo in a Docker victim container
+demo/run-mitm-demo.sh    # simulated MITM demo (in-sandbox, no Docker)
 tests/
 ```
 

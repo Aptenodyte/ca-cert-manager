@@ -89,6 +89,11 @@ script `demo/run-attack-demo.sh` (Docker victim container), not a UI button.
 3. CRL-aware clients (`openssl s_client -crl_check`) → reject.
 4. One action distrusts the root in every store → **all** clients now REJECT.
 
+MITM variant (`demo/run-mitm-demo.sh`, in-sandbox, no Docker): the attacker mints a
+FRESH cert from the compromised CA — not on the CRL — so pre-fix even CRL-aware
+clients accept it (`pki.mint_attacker_cert` + `server.start_server_with_cert`);
+only root distrust (`remediate --mode root`) stops it.
+
 ## Remediation modes (SPKI vs root — expect judges to ask)
 - `spki` (default, surgical): block only the compromised keys' SPKI sha256 hashes
   (OneCRL-style). Other certs from that CA and future key rotations keep working.

@@ -42,6 +42,27 @@ def test_probe_matrix_pre_and_post_fix(sandbox_env):
     assert not any(post.values())
 
 
+def test_mitm_attacker_cert(sandbox_env):
+    """Simulated MITM: a FRESH cert minted by the compromised CA is not on the CRL,
+    so pre-fix even CRL-aware clients accept it; only root distrust stops it."""
+    from rootwatch import manager, pki, probes, server
+    from rootwatch.stores import all_stores
+    from rootwatch.stores.base import RemediationMode
+    cert, key, chain = pki.mint_attacker_cert(sandbox_env / "pki", hostname="bank.local")
+    assert cert.exists() and key.exists() and chain.exists()
+    t, port = server.start_server_with_cert(port=0, certfile=chain, keyfile=key)
+    time.sleep(0.2)
+    url = f"https://127.0.0.1:{port}/"
+    ca = sandbox_env / "etc" / "ssl" / "ca-bundle.crt"
+    sc = manager.load_scenario("scenarios/emudhra.yaml")
+    pre = {r.client: r.success for r in probes.probe_all(url, cafile=str(ca), crl_pem=sc.crl_pem)}
+    assert pre["requests"] and pre["curl"]                    # plain clients: MITM works
+    assert pre["requests-crl"] and pre["openssl-crl"]          # CRL does NOT help: fresh serial
+    manager.remediate_selected(all_stores(), [], sc, RemediationMode.ROOT)
+    post = {r.client: r.success for r in probes.probe_all(url, cafile=str(ca), crl_pem=sc.crl_pem)}
+    assert not any(post.values())                              # root distrust blocks the MITM
+
+
 def test_stores_assess_audit_remediate(sandbox_env):
     from rootwatch import manager
     from rootwatch.stores import all_stores
