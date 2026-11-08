@@ -19,6 +19,7 @@ createApp({
       openRow: null,   // store id whose detail row is open
       logLines: [],
       busy: false,
+      theme: document.documentElement.dataset.theme || "dark",
     };
   },
   computed: {
@@ -40,6 +41,12 @@ createApp({
     },
   },
   methods: {
+    toggleTheme() {
+      this.theme = this.theme === "dark" ? "light" : "dark";
+      document.documentElement.dataset.theme = this.theme;
+      try { localStorage.setItem("rootcanal-theme", this.theme); } catch (e) { /* private mode */ }
+      this.log(`🎨 switched to ${this.theme} mode`);
+    },
     statusOf(s) {
       if (s.status) return s.status;
       return ((s.alerts || []).length || (s.findings || []).length) ? "alert" : "ok";
