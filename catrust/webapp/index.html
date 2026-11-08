@@ -59,12 +59,14 @@
   <section class="panel">
     <div class="table-head">
       <h2>Applications / CA stores</h2>
-      <button @click="setSort('urgent')" :class="{ active: sortMode === 'urgent' }" title="sort rows by urgency">🔥 Most urgent</button>
     </div>
     <table class="stores">
       <thead>
         <tr>
-          <th>Application / CA store</th>
+          <th>Application / CA store
+            <button class="th-sort" @click="setSort('urgent')" :class="{ active: sortMode === 'urgent' }"
+                    title="sort rows by urgency">🔥 Most urgent</button>
+          </th>
           <th>Status
             <button class="th-sort" @click="setSort('recent')" :class="{ active: sortMode === 'recent' }"
                     title="sort rows by latest alert">🕒 Most recent</button>
