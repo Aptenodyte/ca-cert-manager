@@ -39,6 +39,11 @@
     <button @click="audit" :disabled="busy">🔍 Audit CA stores</button>
     <button @click="updateCrl" :disabled="busy">📥 Update CRL</button>
     <button class="danger" @click="jumpToAffected">🚨 Jump to Affected ({{ affectedCount }})</button>
+    <span class="sort-group">
+      <span class="lbl">sort:</span>
+      <button @click="setSort('urgent')" :class="{ active: sortMode === 'urgent' }">🔥 Most urgent</button>
+      <button @click="setSort('recent')" :class="{ active: sortMode === 'recent' }">🕒 Most recent</button>
+    </span>
   </section>
 
   <!-- BOX 2: stores table; click a row to open its details -->
@@ -53,7 +58,7 @@
         <tr><th>Application / CA store</th><th>Status</th><th>Roots</th><th>Alerts</th><th></th></tr>
       </thead>
       <tbody>
-        <template v-for="s in filteredStores" :key="s.id">
+        <template v-for="s in sortedStores" :key="s.id">
           <tr class="store-row" :class="{ affected: statusOf(s) === 'alert', open: openRow === s.id }"
               @click="openRow = openRow === s.id ? null : s.id">
             <td><span class="icon">{{ s.icon }}</span> {{ s.name }}</td>
@@ -78,8 +83,15 @@
                   </div>
                 </div>
                 <div v-if="s.alerts.length" class="alert-box">
-                  <h3>⚠ CRL alert{{ s.alerts.length > 1 ? "s" : "" }} affecting this store</h3>
-                  <div v-for="(a, i) in s.alerts" :key="i" class="alert mono">
+                  <h3>⚠ {{ s.alerts.length }} alert{{ s.alerts.length > 1 ? "s" : "" }} affecting this store</h3>
+                  <select v-if="s.alerts.length > 1" class="alert-pick" :value="selectedAlertIndex(s)"
+                          @click.stop @change="alertPick[s.id] = +$event.target.value">
+                    <option v-for="(a, i) in s.alerts.slice(0, 5)" :key="i" :value="i">
+                      #{{ i + 1 }} · {{ a.source }} · {{ a.serial ? "serial " + a.serial.slice(0, 12) + "…" : "spki " + (a.spki_hash || "").slice(0, 12) + "…" }}
+                    </option>
+                  </select>
+                  <div v-if="s.alerts.length > 5" class="dim">first 5 shown in dropdown — {{ s.alerts.length - 5 }} more</div>
+                  <div v-for="(a, i) in s.alerts.slice(0, 5)" :key="i" v-show="i === selectedAlertIndex(s)" class="alert mono">
                     <div>source: {{ a.source }} · revoked: {{ a.revoked_at || "—" }}</div>
                     <div>serial: {{ a.serial || "—" }} · spki: {{ a.spki_hash || "—" }}</div>
                     <div>subject: {{ a.subject || "—" }} — {{ a.reason }}</div>

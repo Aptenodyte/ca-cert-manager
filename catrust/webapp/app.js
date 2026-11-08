@@ -20,6 +20,8 @@ createApp({
       logLines: [],
       busy: false,
       theme: document.documentElement.dataset.theme || "dark",
+      sortMode: "none",        // "none" | "urgent" | "recent"
+      alertPick: {},           // storeId -> selected alert index (dropdown of first 5)
     };
   },
   computed: {
@@ -39,6 +41,16 @@ createApp({
       const srcs = [...new Set(this.blocklist.map(e => e.source || "CRL"))];
       return srcs.join(", ");
     },
+    sortedStores() {
+      const arr = [...this.filteredStores];
+      if (this.sortMode === "urgent") {
+        arr.sort((a, b) => this.urgency(b) - this.urgency(a) || a.name.localeCompare(b.name));
+      } else if (this.sortMode === "recent") {
+        arr.sort((a, b) => this.latestAlert(b).localeCompare(this.latestAlert(a)) ||
+                          a.name.localeCompare(b.name));
+      }
+      return arr;
+    },
   },
   methods: {
     toggleTheme() {
@@ -50,6 +62,34 @@ createApp({
     statusOf(s) {
       if (s.status) return s.status;
       return ((s.alerts || []).length || (s.findings || []).length) ? "alert" : "ok";
+    },
+    // urgency score: revoked serials (actively abused certs) > known-bad roots >
+    // distrusted SPKI keys > generic findings
+    urgency(s) {
+      let score = 0;
+      for (const a of s.alerts || []) {
+        if (a.serial) score += 20;
+        if (a.spki_hash) score += 10;
+      }
+      score += (s.roots || []).filter(r => (r.flags || []).includes("known-bad")).length * 15;
+      score += (s.findings || []).length * 5;
+      return score;
+    },
+    latestAlert(s) {
+      let m = "";
+      for (const a of s.alerts || []) if (a.revoked_at && a.revoked_at > m) m = a.revoked_at;
+      return m;
+    },
+    setSort(mode) {
+      this.sortMode = this.sortMode === mode ? "none" : mode;
+      this.log(this.sortMode === "none"
+        ? "↕ sort reset (original order)"
+        : `↕ sorted by ${this.sortMode === "urgent" ? "🔥 most urgent" : "🕒 most recent"}`, "");
+    },
+    selectedAlertIndex(s) {
+      const n = Math.min(5, (s.alerts || []).length);
+      const p = this.alertPick[s.id];
+      return (p === undefined || p >= n) ? 0 : p;
     },
     log(msg, cls = "") {
       const time = new Date().toLocaleTimeString();

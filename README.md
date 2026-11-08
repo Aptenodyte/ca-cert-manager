@@ -47,10 +47,12 @@ Single page, three boxes (see `catrust/webapp/`):
 
 1. **Top box** — search bar + **🔍 Audit CA stores** (`POST /api/audit`),
    **📥 Update CRL** (`POST /api/crl/update`), **🚨 Jump to Affected** (opens the first
-   alerted row).
+   alerted row), and sort buttons **🔥 Most urgent** / **🕒 Most recent** (click the active
+   one again to reset). Light/dark theme toggle in the header.
 2. **Table box** — one row per Application/CA store: *name | Status | Roots | Alerts*.
-   Clicking a row expands the details: the store's **trusted roots list**, and if a CRL
-   alert affects it, the **alert details** plus two remediation buttons:
+   Clicking a row expands the details: the store's **trusted roots list**, and if CRL
+   alerts affect it, a **dropdown of the first 5 alerts** (with the selected alert's
+   details) plus two remediation buttons:
    **🔬 Distrust SPKI hash** (`mode=spki`) or **☢️ Distrust entire root** (`mode=root`)
    → `POST /api/remediate {store_id, mode}`. After remediation the row flips to `ok`.
 3. **Live log** at the bottom (full width, auto-scroll) — every API call logs a line.
