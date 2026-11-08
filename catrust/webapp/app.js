@@ -125,13 +125,24 @@ createApp({
         this.scenarioName = (data.scenario && data.scenario.name) || "";
         this.log(`audit: ${this.stores.length} stores, ${this.affectedCount} affected, ` +
                  `${this.blocklist.length} blocklist entries`, this.affectedCount ? "err" : "ok");
+        const cap = 8;   // per store, to keep the log readable
         for (const s of this.stores) {
-          const na = (s.alerts || []).length, nf = (s.findings || []).length;
-          const first = ((s.alerts || [])[0] || (s.findings || [])[0] || {});
-          const detail = first.reason ? `${first.reason} (${first.issuer || first.subject || "CRL"})` : (first.detail || "");
-          if (na || nf) this.log(`  ⚠ ${s.name}: ${s.total_roots} roots, ${na} alert(s)` +
-                                 (nf ? `, ${nf} finding(s)` : "") + (detail ? ` — ${detail}` : ""), "err");
-          else this.log(`  ✓ ${s.name}: ${s.total_roots} roots, ok`, "ok");
+          const alerts = s.alerts || [], findings = s.findings || [];
+          if (!alerts.length && !findings.length) {
+            this.log(`  ✓ ${s.name}: ${s.total_roots} roots, ok`, "ok");
+            continue;
+          }
+          this.log(`  ⚠ ${s.name}: ${s.total_roots} roots — ` +
+                   `${alerts.length} untrusted cert(s), ${findings.length} finding(s)`, "err");
+          for (const a of alerts.slice(0, cap))
+            this.log(`    🚫 untrusted cert: serial=${a.serial ? a.serial.slice(0, 16) + "…" : "—"} ` +
+                     `spki=${a.spki_hash ? a.spki_hash.slice(0, 16) + "…" : "—"} ` +
+                     `issuer=${a.issuer || "—"} reason=${a.reason || "?"} ` +
+                     `revoked=${a.revoked_at || "—"} src=${a.source || "CRL"}`, "err");
+          if (alerts.length > cap) this.log(`    … ${alerts.length - cap} more untrusted certs`, "err");
+          for (const f of findings.slice(0, cap))
+            this.log(`    ⚠ finding [${f.kind}]: ${f.detail}`, "warn");
+          if (findings.length > cap) this.log(`    … ${findings.length - cap} more findings`, "warn");
         }
       } catch (e) { this.log("audit failed: " + e.message, "err"); }
       this.busy = false;
@@ -147,6 +158,14 @@ createApp({
         for (const e of this.blocklist) bySrc[e.source || "CRL"] = (bySrc[e.source || "CRL"] || 0) + 1;
         for (const [src, n] of Object.entries(bySrc))
           this.log(`  📥 ${n} revoked entr${n === 1 ? "y" : "ies"} from ${src}`, "warn");
+        const shown = {};
+        for (const e of this.blocklist) {           // first 3 untrusted certs per source
+          const src = e.source || "CRL";
+          shown[src] = (shown[src] || 0) + 1;
+          if (shown[src] <= 3)
+            this.log(`    🚫 ${src}: serial=${e.serial ? e.serial.slice(0, 12) + "…" : "—"} ` +
+                     `issuer=${(e.issuer || "—").slice(0, 48)} reason=${e.reason || "—"}`, "warn");
+        }
         await this.audit();
       } catch (e) { this.log("CRL update failed: " + e.message, "err"); }
       this.busy = false;
