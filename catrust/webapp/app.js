@@ -14,7 +14,6 @@ createApp({
     return {
       stores: [],
       blocklist: [],
-      scenarioName: "",
       query: "",
       openRow: null,   // store id whose detail row is open
       logLines: [],
@@ -122,7 +121,6 @@ createApp({
         const data = await this.post("/api/audit");
         this.stores = data.stores || [];
         this.blocklist = data.blocklist || [];
-        this.scenarioName = (data.scenario && data.scenario.name) || "";
         this.log(`audit: ${this.stores.length} stores, ${this.affectedCount} affected, ` +
                  `${this.blocklist.length} blocklist entries`, this.affectedCount ? "err" : "ok");
         const cap = 8;   // per store, to keep the log readable
