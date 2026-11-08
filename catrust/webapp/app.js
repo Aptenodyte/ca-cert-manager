@@ -22,6 +22,7 @@ createApp({
       theme: document.documentElement.dataset.theme || "dark",
       sortMode: "none",        // "none" | "urgent" | "recent"
       alertPick: {},           // storeId -> selected alert index (dropdown of first 5)
+      modalStoreId: null,      // store whose alert popup ("tab") is open
     };
   },
   computed: {
@@ -50,6 +51,10 @@ createApp({
                           a.name.localeCompare(b.name));
       }
       return arr;
+    },
+    // store behind the alert popup (kept by id so it stays fresh after re-audit)
+    modalStore() {
+      return this.stores.find(s => s.id === this.modalStoreId) || null;
     },
   },
   methods: {
@@ -139,10 +144,12 @@ createApp({
       if (first) this.openAlerts(first, "🚨 jumped to first affected store: ");
       else this.log("no affected stores — nothing to jump to", "ok");
     },
-    // clicking the row's ALERT badge opens that row and scrolls to its alert box
+    // clicking the row's ALERT badge (or Jump to Affected) opens the row AND
+    // pops up the "tab" with the first 5 alerts of that store
     openAlerts(s, prefix = "⚠ ") {
       this.openRow = s.id;
-      this.log(`${prefix}${s.name}: showing ${(s.alerts || []).length} alert(s)`, "err");
+      this.modalStoreId = s.id;
+      this.log(`${prefix}${s.name}: showing first 5 of ${(s.alerts || []).length} alert(s)`, "err");
       this.$nextTick(() =>
         document.querySelector("tr.open .alert-box")?.scrollIntoView({ block: "center" }));
     },

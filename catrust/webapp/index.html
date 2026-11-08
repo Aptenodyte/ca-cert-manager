@@ -122,6 +122,32 @@
     <div v-if="!filteredStores.length" style="color:var(--muted);font-size:12px">No stores match.</div>
   </section>
 
+  <!-- ALERT POPUP: first 5 alerts of the store opened via Jump to Affected / ALERT badge -->
+  <div v-if="modalStore" class="modal-overlay" @click.self="modalStoreId = null">
+    <div class="modal">
+      <div class="modal-head">
+        <h3>⚠ First 5 alerts — {{ modalStore.icon }} {{ modalStore.name }}
+          ({{ (modalStore.alerts || []).length }} total)</h3>
+        <button @click="modalStoreId = null" title="close">✖</button>
+      </div>
+      <div v-for="(a, i) in (modalStore.alerts || []).slice(0, 5)" :key="i" class="alert mono">
+        <div>#{{ i + 1 }} · source: {{ a.source }} · revoked: {{ a.revoked_at || "—" }}</div>
+        <div>serial: {{ a.serial || "—" }} · spki: {{ a.spki_hash || "—" }}</div>
+        <div>subject: {{ a.subject || "—" }} — {{ a.reason }}</div>
+        <div class="alert-actions">
+          <button class="danger" @click="remediate(modalStore.id, 'spki')">🔬 Distrust SPKI hash</button>
+          <button class="danger" @click="remediate(modalStore.id, 'root')">☢️ Distrust entire root</button>
+        </div>
+      </div>
+      <div v-if="(modalStore.alerts || []).length > 5" class="dim">
+        {{ modalStore.alerts.length - 5 }} more — open the row below for the full dropdown
+      </div>
+      <div v-if="!(modalStore.alerts || []).length" class="no-alert">
+        No alerts left on this store — remediated ✅
+      </div>
+    </div>
+  </div>
+
   <!-- BOX 3: live CLI log -->
   <section class="panel log-panel">
     <h2>Live log</h2>
