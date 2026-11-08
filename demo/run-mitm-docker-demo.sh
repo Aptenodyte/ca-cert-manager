@@ -66,6 +66,8 @@ echo "=== [1/6] clean sandbox (real stores only) + plant compromised eMudhra roo
 echo
 echo "=== [2/6] attacker mints a FRESH phishing cert for $HOSTNAME and starts the MITM server on :$MITM_PORT ==="
 echo "    (new serial — NOT on the CRL, so revocation checking cannot catch it)"
+# self-heal: kill a stale MITM server left over from a previous (interrupted) run
+[ -f /tmp/rootwatch-mitm-docker.pid ] && kill "$(cat /tmp/rootwatch-mitm-docker.pid)" 2>/dev/null || true
 RUNNER="$(mktemp /tmp/rootwatch-mitm.XXXXXX.py)"
 cat > "$RUNNER" <<'PYEOF'
 import sys, time
@@ -78,16 +80,27 @@ while True:
     time.sleep(3600)
 PYEOF
 PORTFILE="$(mktemp /tmp/rootwatch-mitm.port.XXXXXX)"
-"$PY" "$RUNNER" "$MITM_PORT" "$HOSTNAME" > "$PORTFILE" &
-MITM_PID=$!
-for _ in $(seq 1 20); do
-  [ -s "$PORTFILE" ] && break
-  sleep 0.25
-done
-MITM_URL="$(sed -n 1p "$PORTFILE" 2>/dev/null || true)"
-CERT_SUBJ="$(sed -n 2p "$PORTFILE" 2>/dev/null || true)"
+start_mitm() {  # $1 = port (0 = ephemeral)
+  : > "$PORTFILE"
+  "$PY" "$RUNNER" "$1" "$HOSTNAME" > "$PORTFILE" 2> /tmp/rootwatch-mitm-docker.err &
+  MITM_PID=$!
+  echo $MITM_PID > /tmp/rootwatch-mitm-docker.pid
+  for _ in $(seq 1 20); do
+    [ -s "$PORTFILE" ] && return 0
+    sleep 0.25
+  done
+  kill "$MITM_PID" 2>/dev/null || true
+  return 1
+}
+if ! start_mitm "$MITM_PORT"; then
+  echo "    port $MITM_PORT busy or failed — retrying on an ephemeral port…"
+  start_mitm 0 || { echo "ERROR: MITM server failed to start:" >&2
+                    sed 's/^/    /' /tmp/rootwatch-mitm-docker.err >&2; exit 1; }
+fi
+MITM_URL="$(sed -n 1p "$PORTFILE")"
+CERT_SUBJ="$(sed -n 2p "$PORTFILE")"
 rm -f "$RUNNER" "$PORTFILE"
-[ -n "$MITM_URL" ] || { echo "ERROR: MITM server failed to start on port $MITM_PORT" >&2; exit 1; }
+MITM_PORT="$(printf '%s' "$MITM_URL" | sed -E 's|.*:([0-9]+)/$|\1|')"
 echo "    MITM server live at $MITM_URL"
 echo "    cert subject: $CERT_SUBJ"
 echo

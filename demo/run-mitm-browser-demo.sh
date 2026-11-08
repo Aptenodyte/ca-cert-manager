@@ -32,6 +32,7 @@ cd "$(dirname "$0")/.."
 IMAGE="python:3.14-slim"
 MITM_PORT=9443
 VNC_PORT=6080
+DASH_PORT=8081
 HOSTNAME="www.t-mobile.com"
 PIDFILE=/tmp/rootwatch-mitm-browser.pid
 CIDFILE=/tmp/rootwatch-mitm-browser.container
@@ -53,6 +54,7 @@ while [ $# -gt 0 ]; do
     --image) IMAGE="$2"; shift 2 ;;
     --mitm-port) MITM_PORT="$2"; shift 2 ;;
     --vnc-port) VNC_PORT="$2"; shift 2 ;;
+    --dash-port) DASH_PORT="$2"; shift 2 ;;
     --hostname) HOSTNAME="$2"; shift 2 ;;
     -h|--help) sed -n '2,20p' "$0"; exit 0 ;;
     *) echo "unknown arg: $1" >&2; exit 2 ;;
@@ -74,6 +76,9 @@ echo "=== [1/4] clean sandbox (real stores) + plant compromised eMudhra root (at
 
 echo
 echo "=== [2/4] attacker mints a FRESH phishing cert for $HOSTNAME; phishing server on :$MITM_PORT ==="
+# self-heal: kill a stale MITM server left over from a previous (interrupted) run
+[ -f "$PIDFILE" ] && kill "$(cat "$PIDFILE")" 2>/dev/null || true
+rm -f /tmp/rootwatch-mitm-browser.out /tmp/rootwatch-mitm-browser.err
 RUNNER="$(mktemp /tmp/rootwatch-mitm.XXXXXX.py)"
 cat > "$RUNNER" <<'PYEOF'
 import sys, time
@@ -84,16 +89,29 @@ print(info["cert_subject"], flush=True)
 while True:
     time.sleep(3600)
 PYEOF
-"$PY" "$RUNNER" "$MITM_PORT" "$HOSTNAME" > /tmp/rootwatch-mitm-browser.out 2>/dev/null &
-echo $! > "$PIDFILE"
-for _ in $(seq 1 20); do
-  [ -s /tmp/rootwatch-mitm-browser.out ] && break
-  sleep 0.25
-done
-MITM_URL="$(sed -n 1p /tmp/rootwatch-mitm-browser.out 2>/dev/null || true)"
-CERT_SUBJ="$(sed -n 2p /tmp/rootwatch-mitm-browser.out 2>/dev/null || true)"
+start_mitm() {  # $1 = port (0 = ephemeral)
+  "$PY" "$RUNNER" "$1" "$HOSTNAME" > /tmp/rootwatch-mitm-browser.out 2> /tmp/rootwatch-mitm-browser.err &
+  echo $! > "$PIDFILE"
+  for _ in $(seq 1 20); do
+    [ -s /tmp/rootwatch-mitm-browser.out ] && return 0
+    sleep 0.25
+  done
+  kill "$(cat "$PIDFILE")" 2>/dev/null || true
+  return 1
+}
+if ! start_mitm "$MITM_PORT"; then
+  echo "    port $MITM_PORT busy or failed — retrying on an ephemeral port…"
+  : > /tmp/rootwatch-mitm-browser.err
+  start_mitm 0 || {
+    echo "ERROR: MITM server failed to start." >&2
+    sed 's/^/    /' /tmp/rootwatch-mitm-browser.err >&2 || true
+    exit 1
+  }
+fi
+MITM_URL="$(sed -n 1p /tmp/rootwatch-mitm-browser.out)"
+CERT_SUBJ="$(sed -n 2p /tmp/rootwatch-mitm-browser.out)"
 rm -f "$RUNNER"
-[ -n "$MITM_URL" ] || { echo "ERROR: MITM server failed to start on port $MITM_PORT" >&2; exit 1; }
+MITM_PORT="$(printf '%s' "$MITM_URL" | sed -E 's|.*:([0-9]+)/$|\1|')"
 echo "    MITM server live at $MITM_URL   cert subject: $CERT_SUBJ"
 echo "    (fresh serial — NOT on any CRL; POSTed credentials go to $ROOTWATCH_ROOT/attacker/loot.jsonl)"
 echo
@@ -110,7 +128,7 @@ echo "    installing firefox-esr, Xvfb/x11vnc/noVNC, certutil, xterm, pip deps (
 docker exec "$CONTAINER" sh -c \
   'apt-get update -qq >/dev/null 2>&1 && DEBIAN_FRONTEND=noninteractive apt-get install -y -qq \
      firefox-esr xvfb x11vnc novnc websockify libnss3-tools xterm curl openssl >/dev/null 2>&1'
-docker exec "$CONTAINER" python3 -m pip install -q cryptography pyyaml requests >/dev/null 2>&1
+docker exec "$CONTAINER" python3 -m pip install -q cryptography pyyaml requests flask >/dev/null 2>&1
 
 echo "    mapping $HOSTNAME -> 127.0.0.1 in the container /etc/hosts…"
 docker exec "$CONTAINER" sh -c "echo '127.0.0.1 $HOSTNAME' >> /etc/hosts"
@@ -144,33 +162,75 @@ docker cp "$SYNC" "$CONTAINER":/usr/local/bin/sync-browser-trust >/dev/null
 rm -f "$SYNC"
 docker exec "$CONTAINER" chmod +x /usr/local/bin/sync-browser-trust
 docker exec "$CONTAINER" sync-browser-trust
+
+# watcher: when the system bundle changes (i.e. the UI remediation rewrote it),
+# re-sync Firefox's NSS DB — this is what the OS does in the real world, so the
+# video needs no extra manual step between clicking in the UI and reloading.
+WATCH="$(mktemp /tmp/watch-trust.XXXXXX.sh)"
+cat > "$WATCH" <<'WEOF'
+#!/bin/sh
+last=""
+while true; do
+  n=$(grep -c "BEGIN CERTIFICATE" /sandbox/etc/ssl/ca-bundle.crt 2>/dev/null || echo 0)
+  if [ "$n" != "$last" ]; then
+    last="$n"
+    /usr/local/bin/sync-browser-trust >> /tmp/watch-trust.log 2>&1
+  fi
+  sleep 2
+done
+WEOF
+docker cp "$WATCH" "$CONTAINER":/usr/local/bin/watch-trust >/dev/null
+rm -f "$WATCH"
+docker exec "$CONTAINER" chmod +x /usr/local/bin/watch-trust
+docker exec -d "$CONTAINER" sh -c '/usr/local/bin/watch-trust >/dev/null 2>&1 &'
+echo "    trust-sync watcher running (auto re-syncs Firefox when the bundle changes)"
 echo
 echo "=== [4/4] start the container desktop: Xvfb :99, x11vnc, noVNC on :$VNC_PORT, Firefox, xterm ==="
 docker exec -d "$CONTAINER" sh -c 'Xvfb :99 -screen 0 1280x800x24 >/tmp/xvfb.log 2>&1 &'
 sleep 1
 docker exec -d "$CONTAINER" sh -c 'x11vnc -display :99 -forever -nopw -quiet >/tmp/x11vnc.log 2>&1 &'
 docker exec -d "$CONTAINER" sh -c "websockify --web /usr/share/novnc $VNC_PORT localhost:5900 >/tmp/websockify.log 2>&1 &"
+
+# RootWatch dashboard INSIDE the victim container, pointed at the mounted sandbox:
+# this is where the remediation is done — with the real web UI (buttons, live log).
+docker exec -d -e ROOTWATCH_ROOT=/sandbox -e PYTHONPATH=/rootwatch \
+  -e ROOTWATCH_REAL_CRL_URLS= -w /rootwatch "$CONTAINER" \
+  sh -c "python3 -m rootwatch.cli web --host 0.0.0.0 --port $DASH_PORT >/tmp/dashboard.log 2>&1 &"
+sleep 4
+
+# Firefox: tab 1 = the phishing site (Bob), tab 2 = the RootWatch dashboard (the fix)
 docker exec -d -e DISPLAY=:99 -e HOME=/root "$CONTAINER" sh -c \
   "firefox-esr --profile /root/rw-profile --no-remote 'https://$HOSTNAME:$MITM_PORT/' >/tmp/firefox.log 2>&1 &"
+sleep 5
 docker exec -d -e DISPLAY=:99 -e HOME=/root "$CONTAINER" sh -c \
-  'xterm -geometry 100x28 -e "sh -c \"echo RootWatch victim terminal; echo; echo audit: ROOTWATCH_ROOT=/sandbox PYTHONPATH=/rootwatch python3 -m rootwatch.cli audit; echo fix:   ROOTWATCH_ROOT=/sandbox PYTHONPATH=/rootwatch python3 -m rootwatch.cli remediate --mode root; echo then:  sync-browser-trust; exec sh\"" >/tmp/xterm.log 2>&1 &'
+  "firefox-esr --profile /root/rw-profile --no-remote --new-tab 'http://127.0.0.1:$DASH_PORT/' >/tmp/firefox2.log 2>&1 &"
+docker exec -d -e DISPLAY=:99 -e HOME=/root "$CONTAINER" sh -c \
+  'xterm -geometry 100x28 -e "sh -c \"echo RootWatch victim terminal; echo; echo (the fix can be done in the web UI tab; CLI also works:); echo; echo   ROOTWATCH_ROOT=/sandbox PYTHONPATH=/rootwatch python3 -m rootwatch.cli remediate --mode root; echo; echo loot:  cat /sandbox/attacker/loot.jsonl; exec sh\"" >/tmp/xterm.log 2>&1 &'
 sleep 6
 
 echo
 echo "✅ stage ready."
 echo
 echo "  👉 open this in YOUR host browser:   http://127.0.0.1:$VNC_PORT/vnc.html"
-echo "     (container desktop; Firefox is already on https://$HOSTNAME:$MITM_PORT/)"
+echo "     (container desktop: Firefox tab 1 = phishing site, tab 2 = RootWatch dashboard)"
+echo
+echo "  The RootWatch dashboard ALSO runs in the container: http://127.0.0.1:$DASH_PORT/"
+echo "  (reachable from your host browser too — same UI, pointed at the victim's /sandbox)"
 echo
 echo "  VIDEO FLOW:"
-echo "   1. in Firefox: the fake T-Mobile page loads with a GREEN LOCK — click the lock,"
-echo "      the cert was issued by 'CN=eMudhra Demo Issuing CA' (fresh serial, not on any CRL)"
+echo "   1. in Firefox (tab 1): the fake T-Mobile page loads with a GREEN LOCK — click the"
+echo "      lock: the cert was issued by 'CN=eMudhra Demo Issuing CA' (fresh serial, not on any CRL)"
 echo "   2. sign in as Bob (any credentials) — then on the HOST:  cat $ROOTWATCH_ROOT/attacker/loot.jsonl"
 echo "      shows 💀 the exfiltrated credentials"
-echo "   3. in the container xterm:  ROOTWATCH_ROOT=/sandbox PYTHONPATH=/rootwatch \\"
-echo "        python3 -m rootwatch.cli remediate --mode root        # one action, all 8 stores"
-echo "      then:  sync-browser-trust                                  # re-sync Firefox NSS from the fixed bundle"
-echo "   4. reload the page in Firefox -> 'Warning: Potential Security Risk Ahead' = MITM BLOCKED"
+echo "   3. cut to the RootWatch dashboard (tab 2, or http://127.0.0.1:$DASH_PORT/):"
+echo "        • click '🔍 Audit CA stores'  -> all 8 stores show ALERT"
+echo "        • click a store row to expand it, then click '☢️ Distrust entire root'"
+echo "          (repeat for each affected store — the live log shows every action)"
+echo "        • CLI alternative in the container xterm:"
+echo "          ROOTWATCH_ROOT=/sandbox PYTHONPATH=/rootwatch \\"
+echo "            python3 -m rootwatch.cli remediate --mode root"
+echo "   4. reload tab 1 in Firefox -> 'Warning: Potential Security Risk Ahead' = MITM BLOCKED"
+echo "      (the trust-sync watcher re-syncs Firefox's NSS DB automatically after the fix)"
 echo
 echo "  container: $CONTAINER   MITM server pid: $(cat "$PIDFILE")"
 echo "  cleanup when done:  ./demo/run-mitm-browser-demo.sh --cleanup"

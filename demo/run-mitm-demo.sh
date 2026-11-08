@@ -61,12 +61,22 @@ while True:
     time.sleep(3600)
 PYEOF
 PORTFILE="$(mktemp /tmp/rootwatch-mitm.port.XXXXXX)"
-"$PY" "$RUNNER" "$PORT" > "$PORTFILE" &
-MITM_PID=$!
-for _ in $(seq 1 20); do
-  [ -s "$PORTFILE" ] && break
-  sleep 0.25
-done
+start_mitm() {  # $1 = port (0 = ephemeral)
+  : > "$PORTFILE"
+  "$PY" "$RUNNER" "$1" > "$PORTFILE" 2> /tmp/rootwatch-mitm-demo.err &
+  MITM_PID=$!
+  for _ in $(seq 1 20); do
+    [ -s "$PORTFILE" ] && return 0
+    sleep 0.25
+  done
+  kill "$MITM_PID" 2>/dev/null || true
+  return 1
+}
+if ! start_mitm "$PORT"; then
+  echo "    port $PORT busy or failed — retrying on an ephemeral port…"
+  start_mitm 0 || { echo "ERROR: MITM server failed to start:" >&2
+                    sed 's/^/    /' /tmp/rootwatch-mitm-demo.err >&2; exit 1; }
+fi
 ACTUAL_PORT="$(cat "$PORTFILE")"
 rm -f "$RUNNER" "$PORTFILE"
 [ -n "$ACTUAL_PORT" ] || { echo "ERROR: MITM server failed to start on port $PORT" >&2; exit 1; }

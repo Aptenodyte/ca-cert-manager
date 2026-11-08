@@ -83,16 +83,20 @@ updates in place), and Bob's reload is **rejected** (`unable to get local issuer
 certificate`). ✅ DEMO PASS.
 
 **Full visual demo** (`./demo/run-mitm-browser-demo.sh`): sets up a victim container
-with a real desktop (Xvfb + x11vnc + noVNC on `:6080`, Firefox + xterm). Open
-`http://127.0.0.1:6080/vnc.html` in your host browser → you see the container desktop.
-The container's `/etc/hosts` maps `www.t-mobile.com` → 127.0.0.1 and its Firefox NSS
-DB is synced from the mounted sandbox bundle (`sync-browser-trust`), so Firefox loads
-the phishing page with a **green lock** (cert issued by "eMudhra Demo Issuing CA" —
-click the lock to show it). Sign in as Bob → credentials appear in
-`.sandbox/attacker/loot.jsonl`. Then, in the container's xterm, run
-`ROOTWATCH_ROOT=/sandbox PYTHONPATH=/rootwatch python3 -m rootwatch.cli remediate --mode root`,
-`sync-browser-trust`, and reload Firefox → **"Warning: Potential Security Risk
-Ahead"** — the MITM is blocked. `./demo/run-mitm-browser-demo.sh --cleanup` tears down.
+with a real desktop (Xvfb + x11vnc + noVNC on `:6080`, Firefox + xterm) **and the
+RootWatch dashboard running inside that container** (port `:8081`, pointed at the
+victim's `/sandbox`). Open `http://127.0.0.1:6080/vnc.html` in your host browser → the
+container desktop: Firefox tab 1 is the phishing site, tab 2 is the dashboard (also
+reachable directly at `http://127.0.0.1:8081/`). The container's `/etc/hosts` maps
+`www.t-mobile.com` → 127.0.0.1 and its Firefox NSS DB is synced from the mounted
+sandbox bundle, so Firefox loads the phishing page with a **green lock** (cert issued
+by "eMudhra Demo Issuing CA" — click the lock to show it). Sign in as Bob →
+credentials appear in `.sandbox/attacker/loot.jsonl`. Then **fix it in the web UI**:
+click *🔍 Audit CA stores* → all 8 stores show ALERT → click a store row → *☢️
+Distrust entire root* (repeat per store; the live log narrates every action). A
+trust-sync watcher re-syncs Firefox's NSS DB from the fixed bundle automatically, so
+reloading tab 1 gives **"Warning: Potential Security Risk Ahead"** — MITM blocked.
+(`./demo/run-mitm-browser-demo.sh --cleanup` tears everything down.)
 
 ## The dashboard (Vue 3, vendored — no build step, works offline)
 

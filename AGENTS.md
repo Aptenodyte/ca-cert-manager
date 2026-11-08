@@ -106,12 +106,17 @@ credentials are exfiltrated; then `pip install cryptography pyyaml requests` +
 Full visual variant (`demo/run-mitm-browser-demo.sh`): victim container with a real
 desktop — Xvfb :99 + x11vnc + noVNC (host opens http://127.0.0.1:6080/vnc.html), Firefox
 (profile /root/rw-profile) whose NSS DB is synced from the mounted sandbox bundle via
-/usr/local/bin/sync-browser-trust (re-run after remediation), xterm open, container
-/etc/hosts maps www.t-mobile.com -> 127.0.0.1, `--network host` reaches the host MITM
-server on :9443. Video flow: green-lock phishing page -> Bob signs in -> loot in
-<sandbox>/attacker/loot.jsonl -> `remediate --mode root` in the container xterm ->
-`sync-browser-trust` -> reload shows Firefox's "Potential Security Risk Ahead".
-`--cleanup` stops the MITM server and removes the container (pid/cid in /tmp/rootwatch-mitm-browser.*).
+/usr/local/bin/sync-browser-trust, xterm open, container /etc/hosts maps
+www.t-mobile.com -> 127.0.0.1, `--network host` reaches the host MITM server on :9443.
+The RootWatch **dashboard also runs inside the container** (`rootwatch.cli web --host
+0.0.0.0 --port 8081`, ROOTWATCH_ROOT=/sandbox, PYTHONPATH=/rootwatch) — open as Firefox
+tab 2 or directly at http://127.0.0.1:8081/. Video flow: green-lock phishing page ->
+Bob signs in -> loot in <sandbox>/attacker/loot.jsonl -> **fix in the web UI**: Audit ->
+all 8 stores ALERT -> per store row "☢️ Distrust entire root" -> /usr/local/bin/watch-trust
+auto re-syncs Firefox NSS when the bundle changes -> reload shows Firefox's "Potential
+Security Risk Ahead". `--cleanup` stops the MITM server and removes the container
+(pid/cid in /tmp/rootwatch-mitm-browser.*). All MITM scripts now kill a stale MITM
+server from a previous run and fall back to an ephemeral port if :9443 is busy.
 
 ## Remediation modes (SPKI vs root — expect judges to ask)
 - `spki` (default, surgical): block only the compromised keys' SPKI sha256 hashes
